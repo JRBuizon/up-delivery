@@ -37,6 +37,17 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "4e7e5a25-253b-427b-90aa-9ffec6c1bf8b"
+      }
+    },
+    "owner": "jrbuizon"
   }
 }
