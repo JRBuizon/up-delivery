@@ -1,13 +1,38 @@
-import React from 'react';
+// src/app/index.tsx
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Image, TouchableOpacity, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { RESTAURANTS, CATEGORIES } from '../constants/restaurants';
 
 const UP_MAROON = '#7B1113';
 
 export default function HomeScreen() {
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter restaurants for "Popular Near You"
+  const popularRestaurants = RESTAURANTS.filter((r) => r.isPopular);
+
+  // Filter restaurants for "All Restaurants" based on category & search input
+  const filteredRestaurants = RESTAURANTS.filter((restaurant) => {
+    const matchesCategory =
+      selectedCategory === 'All' ||
+      restaurant.category.toLowerCase() === selectedCategory.toLowerCase();
+
+    const matchesSearch =
+      restaurant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      restaurant.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      restaurant.menu.some((item) =>
+        item.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+    return matchesCategory && matchesSearch;
+  });
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Header */}
         <View style={styles.header}>
           <View style={styles.locationContainer}>
             <Ionicons name="location-sharp" size={20} color={UP_MAROON} />
@@ -30,46 +55,83 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Greeting */}
         <View style={styles.greetingContainer}>
           <Text style={styles.greetingTitle}>{"Good morning,\nIskolar!"}</Text>
           <Text style={styles.greetingSubtitle}>Great food, closer to you. ❤️</Text>
         </View>
 
+        {/* Search Input */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="#888" style={styles.searchIcon} />
           <TextInput
             placeholder="Search for food, restaurants, or cuisines..."
             style={styles.searchInput}
             placeholderTextColor="#888"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
         </View>
 
+        {/* Categories */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesContainer}>
-          <View style={styles.categoryItem}>
-            <View style={[styles.categoryIconCircle, { backgroundColor: UP_MAROON }]}>
-              <Ionicons name="grid" size={24} color="#FFF" />
-            </View>
-            <Text style={[styles.categoryText, { color: UP_MAROON, fontWeight: 'bold' }]}>All</Text>
-          </View>
-          {['Rice Meals', 'Snacks', 'Coffee', 'Milk Tea', 'Healthy'].map((cat, index) => (
-            <View key={index} style={styles.categoryItem}>
-              <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3170/3170733.png' }} style={styles.categoryImage} />
-              <Text style={styles.categoryText}>{cat}</Text>
-            </View>
-          ))}
+          {CATEGORIES.map((cat, index) => {
+            const isSelected = selectedCategory === cat;
+            return (
+              <TouchableOpacity
+                key={index}
+                style={styles.categoryItem}
+                onPress={() => setSelectedCategory(cat)}
+              >
+                {cat === 'All' ? (
+                  <View
+                    style={[
+                      styles.categoryIconCircle,
+                      { backgroundColor: isSelected ? UP_MAROON : '#EEE' },
+                    ]}
+                  >
+                    <Ionicons name="grid" size={24} color={isSelected ? '#FFF' : '#555'} />
+                  </View>
+                ) : (
+                  <Image
+                    source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3170/3170733.png' }}
+                    style={[
+                      styles.categoryImage,
+                      isSelected && { borderWidth: 2, borderColor: UP_MAROON },
+                    ]}
+                  />
+                )}
+                <Text
+                  style={[
+                    styles.categoryText,
+                    isSelected && { color: UP_MAROON, fontWeight: 'bold' },
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
+        {/* Promo Banner */}
         <View style={styles.promoBanner}>
           <View style={styles.promoTextContainer}>
             <Text style={styles.promoTitle}>
               {"Your\nCampus Cravings,\n"}
               <Text style={{ color: '#F4A261' }}>Delivered.</Text>
             </Text>
-            <Text style={styles.promoSubtitle}>{"Skip the long walk. Support local.\nDelivered by fellow Iskos."}</Text>
+            <Text style={styles.promoSubtitle}>
+              {"Skip the long walk. Support local.\nDelivered by fellow Iskos."}
+            </Text>
           </View>
-          <Image source={{ uri: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80' }} style={styles.promoImage} />
+          <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80' }}
+            style={styles.promoImage}
+          />
         </View>
 
+        {/* Popular Near You Section */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>🔥 Popular Near You</Text>
           <TouchableOpacity>
@@ -78,33 +140,25 @@ export default function HomeScreen() {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-          <View style={styles.foodCard}>
-            <View>
-              <Image source={{ uri: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=500&q=80' }} style={styles.cardImage} />
-              <Ionicons name="heart-outline" size={22} color="#FFF" style={styles.heartIconAbsolute} />
+          {popularRestaurants.map((restaurant) => (
+            <View key={restaurant.id} style={styles.foodCard}>
+              <View>
+                <Image source={{ uri: restaurant.image }} style={styles.cardImage} />
+                <Ionicons name="heart-outline" size={22} color="#FFF" style={styles.heartIconAbsolute} />
+              </View>
+              <Text style={styles.cardTitle}>{restaurant.name}</Text>
+              <Text style={styles.cardDesc}>
+                {restaurant.category} • {restaurant.priceRange}
+              </Text>
+              <View style={styles.cardStats}>
+                <Text style={styles.ratingText}>⭐ {restaurant.rating}</Text>
+                <Text style={styles.timeText}>🛵 {restaurant.deliveryTime}</Text>
+              </View>
             </View>
-            <Text style={styles.cardTitle}>Kanto Cravings</Text>
-            <Text style={styles.cardDesc}>Rice Meals • ₱</Text>
-            <View style={styles.cardStats}>
-              <Text style={styles.ratingText}>⭐ 4.8</Text>
-              <Text style={styles.timeText}>🛵 15-25 min</Text>
-            </View>
-          </View>
-
-          <View style={styles.foodCard}>
-            <View>
-              <Image source={{ uri: 'https://images.unsplash.com/photo-1558850125-9f584e031977?w=500&q=80' }} style={styles.cardImage} />
-              <Ionicons name="heart-outline" size={22} color="#FFF" style={styles.heartIconAbsolute} />
-            </View>
-            <Text style={styles.cardTitle}>UP Tea Hub</Text>
-            <Text style={styles.cardDesc}>Milk Tea • ₱</Text>
-            <View style={styles.cardStats}>
-              <Text style={styles.ratingText}>⭐ 4.7</Text>
-              <Text style={styles.timeText}>🛵 10-20 min</Text>
-            </View>
-          </View>
+          ))}
         </ScrollView>
 
+        {/* All Restaurants Section */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>All Restaurants</Text>
           <TouchableOpacity style={styles.filterBtn}>
@@ -113,22 +167,28 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.listItem}>
-          <Image source={{ uri: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&q=80' }} style={styles.listImage} />
-          <View style={styles.listInfo}>
-            <Text style={styles.cardTitle}>Silog Stop</Text>
-            <Text style={styles.cardDesc}>Filipino • ₱</Text>
-            <View style={styles.cardStats}>
-              <Text style={styles.ratingText}>⭐ 4.6</Text>
-              <Text style={styles.timeText}>🛵 10-20 min</Text>
+        {filteredRestaurants.map((restaurant) => (
+          <View key={restaurant.id} style={styles.listItem}>
+            <Image source={{ uri: restaurant.image }} style={styles.listImage} />
+            <View style={styles.listInfo}>
+              <Text style={styles.cardTitle}>{restaurant.name}</Text>
+              <Text style={styles.cardDesc}>
+                {restaurant.category} • {restaurant.priceRange}
+              </Text>
+              <View style={styles.cardStats}>
+                <Text style={styles.ratingText}>⭐ {restaurant.rating}</Text>
+                <Text style={styles.timeText}>🛵 {restaurant.deliveryTime}</Text>
+              </View>
+              {restaurant.isStudentOwned && (
+                <View style={styles.badge}>
+                  <Ionicons name="school" size={12} color="#2D6A4F" />
+                  <Text style={styles.badgeText}>UP Student-Owned</Text>
+                </View>
+              )}
             </View>
-            <View style={styles.badge}>
-              <Ionicons name="school" size={12} color="#2D6A4F" />
-              <Text style={styles.badgeText}>UP Student-Owned</Text>
-            </View>
+            <Ionicons name="heart-outline" size={24} color="#888" style={styles.listHeart} />
           </View>
-          <Ionicons name="heart-outline" size={24} color="#888" style={styles.listHeart} />
-        </View>
+        ))}
 
         <View style={{ height: 40 }} />
       </ScrollView>
