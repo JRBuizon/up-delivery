@@ -1,20 +1,28 @@
-// src/app/restaurant/[id].tsx
+// src/app/[id].tsx
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, SafeAreaView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RESTAURANTS, MenuItem } from '../constants/restaurants';
+import { useApp } from '../context/AppContext';
+
 const UP_MAROON = '#7B1113';
+const CAMPUS_LOCATIONS = [
+  'Melchor Hall (Lobby)',
+  'Palma Hall (AS Steps)',
+  'CS Library (Velasquez)',
+  'Sunken Garden Grandstand',
+  'Kalayaan Residence Hall',
+];
 
 export default function RestaurantScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { placeOrder, selectedVoucher } = useApp();
 
-  // Find the clicked restaurant from our data file
   const restaurant = RESTAURANTS.find((r) => r.id === id);
-
-  // Track quantities of each food item in the cart: { [menuItemId]: quantity }
   const [cart, setCart] = useState<{ [key: string]: number }>({});
+  const [dropoff, setDropoff] = useState<string>(CAMPUS_LOCATIONS[0]);
 
   if (!restaurant) {
     return (
@@ -50,18 +58,36 @@ export default function RestaurantScreen() {
   };
 
   const totalItems = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
-  const totalPrice = restaurant.menu.reduce(
+  const subtotal = restaurant.menu.reduce(
     (sum, item) => sum + item.price * (cart[item.id] || 0),
     0
   );
+  const deliveryFee = totalItems > 0 ? 15 : 0;
+  const discount = selectedVoucher ? Math.min(selectedVoucher.discountAmount, subtotal + deliveryFee) : 0;
+  const totalPrice = Math.max(0, subtotal + deliveryFee - discount);
 
   const handleCheckout = () => {
-    const message = `Order placed at ${restaurant.name} for ₱${totalPrice}!`;
-    if (Platform.OS === 'web') {
-      window.alert(message);
-    } else {
-      Alert.alert('Order Confirmed! 🎉', message);
-    }
+    const orderItems = restaurant.menu
+      .filter((item) => (cart[item.id] || 0) > 0)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: cart[item.id],
+      }));
+
+    placeOrder({
+      restaurantId: restaurant.id,
+      restaurantName: restaurant.name,
+      restaurantImage: restaurant.image,
+      items: orderItems,
+      subtotal,
+      deliveryFee,
+      discount,
+      totalPrice,
+      dropoffLocation: dropoff,
+    });
+
     setCart({});
     router.push('/orders' as any);
   };
@@ -91,8 +117,29 @@ export default function RestaurantScreen() {
           </Text>
           <View style={styles.statsRow}>
             <Text style={styles.ratingText}>⭐ {restaurant.rating}</Text>
-            <Text style={styles.timeText}>🛵 {restaurant.deliveryTime}</Text>
+            <Text style={styles.timeText}>🛵 {restaurant.deliveryTime} • ₱15 Campus Delivery</Text>
           </View>
+        </View>
+
+        {/* Campus Drop-off Selector */}
+        <View style={styles.dropoffSection}>
+          <Text style={styles.dropoffLabel}>📍 Select Campus Drop-off Point:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+            {CAMPUS_LOCATIONS.map((loc) => {
+              const active = dropoff === loc;
+              return (
+                <TouchableOpacity
+                  key={loc}
+                  style={[styles.locChip, active && styles.locChipActive]}
+                  onPress={() => setDropoff(loc)}
+                >
+                  <Text style={[styles.locChipText, active && styles.locChipTextActive]}>
+                    {loc}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         <View style={styles.divider} />
@@ -155,16 +202,27 @@ export default function RestaurantScreen() {
           })}
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 120 }} />
       </ScrollView>
 
       {totalItems > 0 && (
         <View style={styles.cartBarContainer}>
+          {selectedVoucher && (
+            <View style={styles.voucherBanner}>
+              <Ionicons name="pricetag" size={14} color="#2D6A4F" />
+              <Text style={styles.voucherBannerText}>
+                Voucher applied: {selectedVoucher.title} (-₱{discount})
+              </Text>
+            </View>
+          )}
           <TouchableOpacity style={styles.cartBar} onPress={handleCheckout}>
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>{totalItems}</Text>
             </View>
-            <Text style={styles.cartBarText}>Place Order</Text>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.cartBarText}>Place Order • {dropoff}</Text>
+              <Text style={styles.cartSubText}>Includes ₱{deliveryFee} campus delivery</Text>
+            </View>
             <Text style={styles.cartTotalText}>₱{totalPrice}</Text>
           </TouchableOpacity>
         </View>
@@ -191,6 +249,12 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   ratingText: { fontSize: 14, fontWeight: 'bold', color: '#E9C46A', marginRight: 12 },
   timeText: { fontSize: 14, color: '#666' },
+  dropoffSection: { backgroundColor: '#FFF', paddingHorizontal: 16, paddingBottom: 14 },
+  dropoffLabel: { fontSize: 13, fontWeight: 'bold', color: '#444' },
+  locChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, backgroundColor: '#F0F0F0', marginRight: 8 },
+  locChipActive: { backgroundColor: UP_MAROON },
+  locChipText: { fontSize: 12, color: '#555', fontWeight: '600' },
+  locChipTextActive: { color: '#FFF' },
   divider: { height: 8, backgroundColor: '#F0F0F0' },
   menuSection: { padding: 16 },
   menuHeading: { fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 16 },
@@ -206,9 +270,12 @@ const styles = StyleSheet.create({
   qtyBtn: { padding: 2 },
   qtyText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
   cartBarContainer: { position: 'absolute', bottom: 16, left: 16, right: 16 },
-  cartBar: { backgroundColor: UP_MAROON, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
-  cartBadge: { backgroundColor: '#F4A261', width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+  voucherBanner: { backgroundColor: '#D8F3DC', paddingVertical: 6, paddingHorizontal: 12, borderTopLeftRadius: 10, borderTopRightRadius: 10, flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
+  voucherBannerText: { fontSize: 12, color: '#2D6A4F', fontWeight: 'bold', marginLeft: 6 },
+  cartBar: { backgroundColor: UP_MAROON, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
+  cartBadge: { backgroundColor: '#F4A261', width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   cartBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
-  cartBarText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
-  cartTotalText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
+  cartBarText: { color: '#FFF', fontSize: 15, fontWeight: 'bold' },
+  cartSubText: { color: '#F4A261', fontSize: 11, marginTop: 2 },
+  cartTotalText: { color: '#FFF', fontSize: 17, fontWeight: 'bold' },
 });

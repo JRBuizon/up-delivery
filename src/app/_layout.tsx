@@ -3,15 +3,17 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppProvider, useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
 const INACTIVE_COLOR = '#8E8E93';
 
-export default function RootLayout() {
+function NavigationShell() {
   const pathname = usePathname();
   const router = useRouter();
+  const { orders } = useApp();
 
-  // Only display the bottom tab bar on the 4 main tab routes
+  const activeOrderCount = orders.filter((o) => o.status !== 'Delivered').length;
   const showTabBar = ['/', '/orders', '/rider', '/rewards'].includes(pathname);
 
   return (
@@ -45,11 +47,18 @@ export default function RootLayout() {
             style={styles.tabItem}
             onPress={() => router.replace('/orders' as any)}
           >
-            <Ionicons
-              name="receipt-outline"
-              size={24}
-              color={pathname === '/orders' ? UP_MAROON : INACTIVE_COLOR}
-            />
+            <View style={{ position: 'relative' }}>
+              <Ionicons
+                name="receipt-outline"
+                size={24}
+                color={pathname === '/orders' ? UP_MAROON : INACTIVE_COLOR}
+              />
+              {activeOrderCount > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{activeOrderCount}</Text>
+                </View>
+              )}
+            </View>
             <Text
               style={[
                 styles.tabLabel,
@@ -103,14 +112,17 @@ export default function RootLayout() {
   );
 }
 
+export default function RootLayout() {
+  return (
+    <AppProvider>
+      <NavigationShell />
+    </AppProvider>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FAFAFA',
-  },
-  content: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: '#FAFAFA' },
+  content: { flex: 1 },
   tabBar: {
     flexDirection: 'row',
     height: 60,
@@ -121,14 +133,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     alignItems: 'center',
   },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  tabLabel: { fontSize: 12, fontWeight: 'bold', marginTop: 2 },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    backgroundColor: '#F4A261',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
     justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
   },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
+  tabBadgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
 });
