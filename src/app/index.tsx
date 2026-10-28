@@ -4,18 +4,18 @@ import { View, Text, StyleSheet, ScrollView, TextInput, Image, TouchableOpacity,
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { RESTAURANTS, CATEGORIES } from '../constants/restaurants';
+import { useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { user, logout } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter restaurants for "Popular Near You"
   const popularRestaurants = RESTAURANTS.filter((r) => r.isPopular);
 
-  // Filter restaurants for "All Restaurants" based on category & search input
   const filteredRestaurants = RESTAURANTS.filter((restaurant) => {
     const matchesCategory =
       selectedCategory === 'All' ||
@@ -51,20 +51,39 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={styles.headerIcons}>
-            <TouchableOpacity style={styles.iconButton}>
-              <Ionicons name="notifications-outline" size={24} color="#333" />
-              <View style={styles.notificationDot} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}>
-              <Ionicons name="person-circle-outline" size={28} color={UP_MAROON} />
-            </TouchableOpacity>
+            {user ? (
+              <>
+                <View style={styles.userPill}>
+                  <Ionicons name="school-outline" size={13} color={UP_MAROON} />
+                  <Text style={styles.userEmailText}>{user.email}</Text>
+                </View>
+                <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+                  <Ionicons name="log-out-outline" size={18} color={UP_MAROON} />
+                  <Text style={styles.logoutText}>Sign Out</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.signInButton}
+                onPress={() => router.push('/login' as any)}
+              >
+                <Ionicons name="log-in-outline" size={18} color="#FFF" />
+                <Text style={styles.signInText}>UP Mail Sign In</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
         {/* Greeting */}
         <View style={styles.greetingContainer}>
-          <Text style={styles.greetingTitle}>{"Good morning,\nIskolar!"}</Text>
-          <Text style={styles.greetingSubtitle}>Great food, closer to you. ❤️</Text>
+          <Text style={styles.greetingTitle}>
+            {`Good morning,\n${user ? user.name : 'Iskolar'}!`}
+          </Text>
+          <Text style={styles.greetingSubtitle}>
+            {user
+              ? 'Great food, closer to you. ❤️'
+              : 'Browsing as Guest • Sign in with UP Mail to order or deliver'}
+          </Text>
         </View>
 
         {/* Search Input */}
@@ -222,8 +241,34 @@ const styles = StyleSheet.create({
   deliverTo: { fontSize: 12, color: '#888' },
   locationText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
   headerIcons: { flexDirection: 'row', alignItems: 'center' },
-  iconButton: { marginLeft: 12, position: 'relative' },
-  notificationDot: { position: 'absolute', top: 2, right: 2, width: 8, height: 8, backgroundColor: 'red', borderRadius: 4 },
+  userPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FDF0ED',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  userEmailText: { fontSize: 12, color: UP_MAROON, fontWeight: '600', marginLeft: 4 },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 10,
+    backgroundColor: '#EEE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  logoutText: { fontSize: 12, fontWeight: 'bold', color: UP_MAROON, marginLeft: 4 },
+  signInButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: UP_MAROON,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  signInText: { fontSize: 12, fontWeight: 'bold', color: '#FFF', marginLeft: 5 },
   greetingContainer: { marginTop: 20, marginBottom: 15 },
   greetingTitle: { fontSize: 28, fontWeight: '900', color: UP_MAROON, lineHeight: 34 },
   greetingSubtitle: { fontSize: 14, color: '#666', marginTop: 5 },

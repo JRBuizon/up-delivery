@@ -18,7 +18,7 @@ const CAMPUS_LOCATIONS = [
 export default function RestaurantScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { placeOrder, selectedVoucher } = useApp();
+  const { user, placeOrder, selectedVoucher } = useApp();
 
   const restaurant = RESTAURANTS.find((r) => r.id === id);
   const [cart, setCart] = useState<{ [key: string]: number }>({});
@@ -57,16 +57,23 @@ export default function RestaurantScreen() {
     });
   };
 
+  const activeVoucher = user ? selectedVoucher : null;
   const totalItems = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
   const subtotal = restaurant.menu.reduce(
     (sum, item) => sum + item.price * (cart[item.id] || 0),
     0
   );
   const deliveryFee = totalItems > 0 ? 15 : 0;
-  const discount = selectedVoucher ? Math.min(selectedVoucher.discountAmount, subtotal + deliveryFee) : 0;
+  const discount = activeVoucher ? Math.min(activeVoucher.discountAmount, subtotal + deliveryFee) : 0;
   const totalPrice = Math.max(0, subtotal + deliveryFee - discount);
 
   const handleCheckout = () => {
+    // Require login before placing an order
+    if (!user) {
+      router.push('/login' as any);
+      return;
+    }
+
     const orderItems = restaurant.menu
       .filter((item) => (cart[item.id] || 0) > 0)
       .map((item) => ({
@@ -207,11 +214,11 @@ export default function RestaurantScreen() {
 
       {totalItems > 0 && (
         <View style={styles.cartBarContainer}>
-          {selectedVoucher && (
+          {activeVoucher && (
             <View style={styles.voucherBanner}>
               <Ionicons name="pricetag" size={14} color="#2D6A4F" />
               <Text style={styles.voucherBannerText}>
-                Voucher applied: {selectedVoucher.title} (-₱{discount})
+                Voucher applied: {activeVoucher.title} (-₱{discount})
               </Text>
             </View>
           )}
@@ -220,8 +227,14 @@ export default function RestaurantScreen() {
               <Text style={styles.cartBadgeText}>{totalItems}</Text>
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.cartBarText}>Place Order • {dropoff}</Text>
-              <Text style={styles.cartSubText}>Includes ₱{deliveryFee} campus delivery</Text>
+              <Text style={styles.cartBarText}>
+                {user ? `Place Order • ${dropoff}` : 'Sign in with UP Mail to Order'}
+              </Text>
+              <Text style={styles.cartSubText}>
+                {user
+                  ? `Includes ₱${deliveryFee} campus delivery`
+                  : `Your cart will be saved • ${dropoff}`}
+              </Text>
             </View>
             <Text style={styles.cartTotalText}>₱{totalPrice}</Text>
           </TouchableOpacity>
