@@ -2,11 +2,13 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Image, TouchableOpacity, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { RESTAURANTS, CATEGORIES } from '../constants/restaurants';
 
 const UP_MAROON = '#7B1113';
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -28,6 +30,10 @@ export default function HomeScreen() {
 
     return matchesCategory && matchesSearch;
   });
+
+  const handleRestaurantPress = (id: string) => {
+    router.push({ pathname: '/[id]', params: { id } });
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -141,7 +147,12 @@ export default function HomeScreen() {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
           {popularRestaurants.map((restaurant) => (
-            <View key={restaurant.id} style={styles.foodCard}>
+            <TouchableOpacity
+              key={restaurant.id}
+              style={styles.foodCard}
+              activeOpacity={0.8}
+              onPress={() => handleRestaurantPress(restaurant.id)}
+            >
               <View>
                 <Image source={{ uri: restaurant.image }} style={styles.cardImage} />
                 <Ionicons name="heart-outline" size={22} color="#FFF" style={styles.heartIconAbsolute} />
@@ -154,7 +165,7 @@ export default function HomeScreen() {
                 <Text style={styles.ratingText}>⭐ {restaurant.rating}</Text>
                 <Text style={styles.timeText}>🛵 {restaurant.deliveryTime}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
 
@@ -168,7 +179,12 @@ export default function HomeScreen() {
         </View>
 
         {filteredRestaurants.map((restaurant) => (
-          <View key={restaurant.id} style={styles.listItem}>
+          <TouchableOpacity
+            key={restaurant.id}
+            style={styles.listItem}
+            activeOpacity={0.8}
+            onPress={() => handleRestaurantPress(restaurant.id)}
+          >
             <Image source={{ uri: restaurant.image }} style={styles.listImage} />
             <View style={styles.listInfo}>
               <Text style={styles.cardTitle}>{restaurant.name}</Text>
@@ -187,7 +203,7 @@ export default function HomeScreen() {
               )}
             </View>
             <Ionicons name="heart-outline" size={24} color="#888" style={styles.listHeart} />
-          </View>
+          </TouchableOpacity>
         ))}
 
         <View style={{ height: 40 }} />
