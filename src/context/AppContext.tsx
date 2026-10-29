@@ -133,7 +133,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...orderData,
       id: newOrderId,
       status: 'Confirmed',
-      createdAt: 'Just now',
+      createdAt: new Date().toISOString(),
       riderName: 'Assigning Isko Rider...',
     };
 

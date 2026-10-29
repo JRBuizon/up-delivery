@@ -1,9 +1,10 @@
 // src/app/orders.tsx
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useApp, OrderStatus } from '../context/AppContext';
+import { useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { OrderStatus, useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
 const STATUS_STEPS: OrderStatus[] = ['Confirmed', 'Preparing', 'On the Way', 'Delivered'];
@@ -61,6 +62,7 @@ export default function OrdersScreen() {
         ) : (
           displayedOrders.map((order) => {
             const stepIndex = STATUS_STEPS.indexOf(order.status);
+            const timeSinceOrdered = Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000)
             return (
               <View key={order.id} style={styles.orderCard}>
                 {/* Top Row */}
@@ -71,7 +73,7 @@ export default function OrdersScreen() {
                       <Text style={styles.restName}>{order.restaurantName}</Text>
                       <Text style={styles.orderIdText}>{order.id}</Text>
                     </View>
-                    <Text style={styles.metaText}>{order.createdAt} • 📍 {order.dropoffLocation}</Text>
+                    <Text style={styles.metaText}>{timeSinceOrdered} minute{timeSinceOrdered !== 1 && "s"} ago • 📍 {order.dropoffLocation}</Text>
                     <View style={styles.statusPill}>
                       <Text style={styles.statusPillText}>{order.status}</Text>
                     </View>
