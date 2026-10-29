@@ -18,6 +18,8 @@ export interface Restaurant {
   image: string;
   isPopular: boolean;
   isStudentOwned?: boolean;
+  latitude: number;
+  longitude: number;
   menu: MenuItem[];
 }
 
@@ -41,6 +43,8 @@ export const RESTAURANTS: Restaurant[] = [
     image: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=500&q=80',
     isPopular: true,
     isStudentOwned: false,
+    latitude: 14.657805, // Area 2 vicinity
+    longitude: 121.071060,
     menu: [
       {
         id: 'kc-1',
@@ -65,10 +69,11 @@ export const RESTAURANTS: Restaurant[] = [
     priceRange: '₱',
     rating: 4.7,
     deliveryTime: '10-20 min',
-    // Replaced broken link with a working boba milk tea image
     image: 'https://images.unsplash.com/photo-1558857563-b371033873b8?w=500&q=80',
     isPopular: true,
     isStudentOwned: false,
+    latitude: 14.653450, // Gyud Food Hub vicinity
+    longitude: 121.072210,
     menu: [
       {
         id: 'th-1',
@@ -89,6 +94,8 @@ export const RESTAURANTS: Restaurant[] = [
     image: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&q=80',
     isPopular: false,
     isStudentOwned: true,
+    latitude: 14.656500, // A2 / KNL vicinity
+    longitude: 121.070000,
     menu: [
       {
         id: 'ss-1',

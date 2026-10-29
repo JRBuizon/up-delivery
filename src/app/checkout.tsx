@@ -1,3 +1,4 @@
+// src/app/checkout.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -5,38 +6,53 @@ import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View }
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
+import { CAMPUS_LOCATIONS } from '../constants/locations';
+import { calculateDistanceKm, calculateDeliveryFee } from '../utils/distance';
 
 const UP_MAROON = '#7B1113';
-const CAMPUS_LOCATIONS = [
-  { name: 'Melchor Hall (Lobby)', latitude: 14.656168415164066, longitude: 121.06969257316486 },
-  { name: 'Palma Hall (AS Steps)', latitude: 14.653846275631317, longitude: 121.06988239411488 },
-  { name: 'CS Library (Velasquez)', latitude: 14.649410705793226, longitude: 121.0692471867055 },
-  { name: 'Sunken Garden Grandstand', latitude: 14.655119720314433, longitude: 121.07285981653312 },
-  { name: 'Kalayaan Residence Hall', latitude: 14.658820365452675, longitude: 121.06878267560805 },
-];
 
 export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { placeOrder } = useApp();
+  
+  // Update params to accept the restaurant's coordinates
   const params = useLocalSearchParams<{
     restaurantId: string;
     restaurantName: string;
     restaurantImage: string;
+    restaurantLat?: string;
+    restaurantLng?: string;
     subtotal: string;
-    deliveryFee: string;
     discount: string;
-    totalPrice: string;
     items: string;
     initialDropoff: string;
   }>();
 
   const parsedItems = params.items ? JSON.parse(params.items) : [];
+  
   const [selectedDropoff, setSelectedDropoff] = useState(
     CAMPUS_LOCATIONS.find((l) => l.name === params.initialDropoff) || CAMPUS_LOCATIONS[0]
   );
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'gcash' | 'maya'>('gcash');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 1. Parse coordinates (fallback to central UPD coords if missing)
+  const restLat = parseFloat(params.restaurantLat || '14.6538');
+  const restLng = parseFloat(params.restaurantLng || '121.0698');
+
+  // 2. Dynamically calculate distance, fee, and total based on the currently selected drop-off
+  const distanceKm = calculateDistanceKm(
+    restLat,
+    restLng,
+    selectedDropoff.latitude,
+    selectedDropoff.longitude
+  );
+
+  const subtotal = parseFloat(params.subtotal || '0');
+  const deliveryFee = calculateDeliveryFee(distanceKm);
+  const discount = parseFloat(params.discount || '0');
+  const totalPrice = Math.max(0, subtotal + deliveryFee - discount);
 
   const handleFinalPlaceOrder = () => {
     setIsSubmitting(true);
@@ -46,14 +62,15 @@ export default function CheckoutScreen() {
         restaurantName: params.restaurantName,
         restaurantImage: params.restaurantImage,
         items: parsedItems,
-        subtotal: parseFloat(params.subtotal || '0'),
-        deliveryFee: parseFloat(params.deliveryFee || '0'),
-        discount: parseFloat(params.discount || '0'),
-        totalPrice: parseFloat(params.totalPrice || '0'),
+        subtotal: subtotal,
+        deliveryFee: deliveryFee,
+        discount: discount,
+        totalPrice: totalPrice,
         dropoffLocation: selectedDropoff.name,
         latitude: selectedDropoff.latitude,
         longitude: selectedDropoff.longitude,
-      });
+        distanceKm: distanceKm, // Passed so the Rider Hub shows the exact distance
+      } as any);
 
       Alert.alert('Order Placed! 🎉', `Your delivery is on its way to ${selectedDropoff.name}.`, [
         { text: 'View Orders', onPress: () => router.replace('/orders' as any) },
@@ -126,22 +143,6 @@ export default function CheckoutScreen() {
         {/* Payment Method Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>💳 Payment Method</Text>
-          
-          {/* <TouchableOpacity
-            style={[styles.paymentCard, paymentMethod === 'cod' && styles.paymentCardActive]}
-            onPress={() => setPaymentMethod('cod')}
-          >
-            <Ionicons name="cash-outline" size={22} color={paymentMethod === 'cod' ? UP_MAROON : '#666'} />
-            <View style={{ marginLeft: 12, flex: 1 }}>
-              <Text style={styles.paymentTitle}>Cash on Delivery (COD)</Text>
-              <Text style={styles.paymentDesc}>Pay rider exact amount upon drop-off</Text>
-            </View>
-            <Ionicons
-              name={paymentMethod === 'cod' ? 'radio-button-on' : 'radio-button-off'}
-              size={20}
-              color={paymentMethod === 'cod' ? UP_MAROON : '#ccc'}
-            />
-          </TouchableOpacity> */}
 
           <TouchableOpacity
             style={[styles.paymentCard, paymentMethod === 'gcash' && styles.paymentCardActive]}
@@ -181,21 +182,21 @@ export default function CheckoutScreen() {
         <View style={styles.section}>
           <View style={styles.billRow}>
             <Text style={styles.billText}>Subtotal</Text>
-            <Text style={styles.billText}>₱{params.subtotal}</Text>
+            <Text style={styles.billText}>₱{subtotal}</Text>
           </View>
           <View style={styles.billRow}>
-            <Text style={styles.billText}>Campus Delivery Fee</Text>
-            <Text style={styles.billText}>₱{params.deliveryFee}</Text>
+            <Text style={styles.billText}>Campus Delivery Fee ({distanceKm} km)</Text>
+            <Text style={styles.billText}>₱{deliveryFee}</Text>
           </View>
-          {parseFloat(params.discount || '0') > 0 && (
+          {discount > 0 && (
             <View style={styles.billRow}>
               <Text style={[styles.billText, { color: '#2D6A4F' }]}>Voucher Discount</Text>
-              <Text style={[styles.billText, { color: '#2D6A4F' }]}>-₱{params.discount}</Text>
+              <Text style={[styles.billText, { color: '#2D6A4F' }]}>-₱{discount}</Text>
             </View>
           )}
           <View style={[styles.billRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 8 }]}>
             <Text style={styles.totalLabel}>Total Amount</Text>
-            <Text style={styles.totalValue}>₱{params.totalPrice}</Text>
+            <Text style={styles.totalValue}>₱{totalPrice}</Text>
           </View>
         </View>
 
@@ -209,7 +210,7 @@ export default function CheckoutScreen() {
           onPress={handleFinalPlaceOrder}
           disabled={isSubmitting}
         >
-          <Text style={styles.placeOrderText}>Confirm & Place Order • ₱{params.totalPrice}</Text>
+          <Text style={styles.placeOrderText}>Confirm & Place Order • ₱{totalPrice}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

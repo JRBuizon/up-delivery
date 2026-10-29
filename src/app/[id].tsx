@@ -6,25 +6,22 @@ import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MenuItem, RESTAURANTS } from '../constants/restaurants';
 import { useApp } from '../context/AppContext';
+import { CAMPUS_LOCATIONS, CampusLocation } from '../constants/locations';
+import { calculateDistanceKm, calculateDeliveryFee } from '../utils/distance';
 
 const UP_MAROON = '#7B1113';
-const CAMPUS_LOCATIONS = [
-  'Melchor Hall (Lobby)',
-  'Palma Hall (AS Steps)',
-  'CS Library (Velasquez)',
-  'Sunken Garden Grandstand',
-  'Kalayaan Residence Hall',
-];
 
 export default function RestaurantScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user, placeOrder, selectedVoucher } = useApp();
+  const { user, selectedVoucher } = useApp();
 
   const restaurant = RESTAURANTS.find((r) => r.id === id);
   const [cart, setCart] = useState<{ [key: string]: number }>({});
-  const [dropoff, setDropoff] = useState<string>(CAMPUS_LOCATIONS[0]);
+  
+  // State now holds the entire CampusLocation object
+  const [dropoff, setDropoff] = useState<CampusLocation>(CAMPUS_LOCATIONS[0]);
 
   if (!restaurant) {
     return (
@@ -65,12 +62,24 @@ export default function RestaurantScreen() {
     (sum, item) => sum + item.price * (cart[item.id] || 0),
     0
   );
-  const deliveryFee = totalItems > 0 ? 15 : 0;
+
+  // 1. Calculate dynamic distance
+  const distanceKm = restaurant?.latitude && restaurant?.longitude
+    ? calculateDistanceKm(
+        restaurant.latitude,
+        restaurant.longitude,
+        dropoff.latitude,
+        dropoff.longitude
+      )
+    : 1.0; // Fallback distance
+
+  // 2. Calculate dynamic fee based on the distance
+  const deliveryFee = totalItems > 0 ? calculateDeliveryFee(distanceKm) : 0;
+  
   const discount = activeVoucher ? Math.min(activeVoucher.discountAmount, subtotal + deliveryFee) : 0;
   const totalPrice = Math.max(0, subtotal + deliveryFee - discount);
 
   const handleCheckout = () => {
-    // Require login before placing an order
     if (!user) {
       router.push('/login' as any);
       return;
@@ -85,7 +94,6 @@ export default function RestaurantScreen() {
         quantity: cart[item.id],
       }));
 
-
     setCart({});
     router.push({
       pathname: '/checkout',
@@ -93,12 +101,15 @@ export default function RestaurantScreen() {
         restaurantId: restaurant.id,
         restaurantName: restaurant.name,
         restaurantImage: restaurant.image,
+        restaurantLat: restaurant.latitude?.toString(),
+        restaurantLng: restaurant.longitude?.toString(),
+        distanceKm: distanceKm.toString(),
         subtotal: subtotal.toString(),
         deliveryFee: deliveryFee.toString(),
         discount: discount.toString(),
         totalPrice: totalPrice.toString(),
         items: JSON.stringify(orderItems),
-        initialDropoff: dropoff,
+        initialDropoff: dropoff.name, // Extract the name string for the checkout route
       },
     });
   };
@@ -128,7 +139,7 @@ export default function RestaurantScreen() {
           </Text>
           <View style={styles.statsRow}>
             <Text style={styles.ratingText}>⭐ {restaurant.rating}</Text>
-            <Text style={styles.timeText}>🛵 {restaurant.deliveryTime} • ₱15 Campus Delivery</Text>
+            <Text style={styles.timeText}>🛵 {restaurant.deliveryTime} • Starts at ₱15</Text>
           </View>
         </View>
 
@@ -137,15 +148,15 @@ export default function RestaurantScreen() {
           <Text style={styles.dropoffLabel}>📍 Select Campus Drop-off Point:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
             {CAMPUS_LOCATIONS.map((loc) => {
-              const active = dropoff === loc;
+              const active = dropoff.name === loc.name;
               return (
                 <TouchableOpacity
-                  key={loc}
+                  key={loc.name}
                   style={[styles.locChip, active && styles.locChipActive]}
-                  onPress={() => setDropoff(loc)}
+                  onPress={() => setDropoff(loc)} // Set the full object to state
                 >
                   <Text style={[styles.locChipText, active && styles.locChipTextActive]}>
-                    {loc}
+                    {loc.name}
                   </Text>
                 </TouchableOpacity>
               );
@@ -232,12 +243,12 @@ export default function RestaurantScreen() {
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.cartBarText}>
-                {user ? `Place Order • ${dropoff}` : 'Sign in with UP Mail to Order'}
+                {user ? `Place Order • ${dropoff.name}` : 'Sign in with UP Mail to Order'}
               </Text>
               <Text style={styles.cartSubText}>
                 {user
-                  ? `Includes ₱${deliveryFee} campus delivery`
-                  : `Your cart will be saved • ${dropoff}`}
+                  ? `Includes ₱${deliveryFee} campus delivery (${distanceKm} km)`
+                  : `Your cart will be saved • ${dropoff.name}`}
               </Text>
             </View>
             <Text style={styles.cartTotalText}>₱{totalPrice}</Text>

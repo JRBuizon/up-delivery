@@ -35,6 +35,7 @@ export interface Order {
   dropoffLocation: string;
   latitude?: number;
   longitude?: number;
+  distanceKm?: number; // Added to pass the calculated distance down to the rider gig
   status: OrderStatus;
   createdAt: string;
   riderName: string;
@@ -311,8 +312,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: `GIG-${Math.floor(400 + Math.random() * 500)}`,
       pickup: orderData.restaurantName,
       dropoff: orderData.dropoffLocation,
-      distance: '0.9 km',
-      fee: 25,
+      distance: orderData.distanceKm ? `${orderData.distanceKm} km` : '1.0 km', // Synchronized distance
+      fee: orderData.deliveryFee, // Synchronized with calculated delivery fee
       items_summary: orderData.items.map((i) => `${i.quantity}x ${i.name}`).join(', '),
       customer_name: customerLabel,
       status: 'Available',
