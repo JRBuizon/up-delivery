@@ -164,7 +164,8 @@ export default function RewardsScreen() {
           <Text style={styles.resetButtonText}>Reset My Account Data & Orders</Text>
         </TouchableOpacity>
 
-        <View style={{ height: 40 }} />
+        {/* Change height from 40 to 120 to ensure it clears the navigation bar */}
+        <View style={{ height: 120 }} />
       </ScrollView>
     </SafeAreaView>
   );
