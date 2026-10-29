@@ -11,6 +11,14 @@ const UP_MAROON = '#7B1113';
 const INACTIVE_COLOR = '#8E8E93';
 const PROTECTED_ROUTES = ['/orders', '/rider', '/rewards'];
 
+
+function NavigationShell() {
+  const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  const router = useRouter();
+  const { isHydrated, user, orders } = useApp();
+
+
 function GlobalRatingOverlay() {
   const { pendingRating, clearPendingRating } = useApp();
 
@@ -18,6 +26,7 @@ function GlobalRatingOverlay() {
 
   return (
     <RatingModal
+      reviewerName={user?.name || 'Juan'}
       visible={true}
       orderId={pendingRating.orderId}
       targetId={pendingRating.targetId}
@@ -30,12 +39,6 @@ function GlobalRatingOverlay() {
     />
   );
 }
-
-function NavigationShell() {
-  const insets = useSafeAreaInsets();
-  const pathname = usePathname();
-  const router = useRouter();
-  const { isHydrated, user, orders } = useApp();
 
   useEffect(() => {
     if (!isHydrated) return;

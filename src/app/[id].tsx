@@ -308,6 +308,7 @@ export default function RestaurantScreen() {
 
       {/* Rating Modal Component */}
       <RatingModal
+        reviewerName={user?.name || 'Juan'}
         visible={modalVisible}
         orderId={`ord_rest_${Date.now()}`}
         targetId={restaurant.id}

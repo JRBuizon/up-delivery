@@ -1,9 +1,11 @@
 // src/app/orders.tsx
+import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import RatingModal from '../components/RatingModal';
 import { OrderStatus, useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
@@ -14,6 +16,14 @@ export default function OrdersScreen() {
   const router = useRouter();
   const [tab, setTab] = useState<'active' | 'past'>('active');
 
+  // State to manage manual rating from past orders tab
+  const [ratingTarget, setRatingTarget] = useState<{
+    orderId: string;
+    targetId: string;
+    targetName: string;
+    targetType: 'rider' | 'buyer' | 'restaurant';
+  } | null>(null);
+
   // Show orders placed by the logged-in student (plus initial seed order)
   const myOrders = orders.filter(
     (o) => !o.customerEmail || o.customerEmail === user?.email
@@ -21,6 +31,23 @@ export default function OrdersScreen() {
   const activeOrders = myOrders.filter((o) => o.status !== 'Delivered');
   const pastOrders = myOrders.filter((o) => o.status === 'Delivered');
   const displayedOrders = tab === 'active' ? activeOrders : pastOrders;
+
+  const [previousRatings, setPreviousRatings] = useState<any[]>([])
+
+  useEffect(() => {
+      const fetchRiderRating = async () => {
+        const { data, error } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('target_type', 'rider')
+          .eq('reviewer_name', user?.email || "Juan");
+        if (!error && data && data.length > 0) {
+          setPreviousRatings(data)
+        }
+      };
+  
+      fetchRiderRating();
+    }, [user]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -66,7 +93,9 @@ export default function OrdersScreen() {
         ) : (
           displayedOrders.map((order) => {
             const stepIndex = STATUS_STEPS.indexOf(order.status);
-            const timeSinceOrdered = Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000)
+            const timeSinceOrdered = Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000);
+            const isDelivered = order.status === 'Delivered';
+
             return (
               <View key={order.id} style={styles.orderCard}>
                 {/* Top Row */}
@@ -77,7 +106,9 @@ export default function OrdersScreen() {
                       <Text style={styles.restName}>{order.restaurantName}</Text>
                       <Text style={styles.orderIdText}>{order.id}</Text>
                     </View>
-                    <Text style={styles.metaText}>{timeSinceOrdered} minute{timeSinceOrdered !== 1 && "s"} ago • 📍 {order.dropoffLocation}</Text>
+                    <Text style={styles.metaText}>
+                      {timeSinceOrdered} minute{timeSinceOrdered !== 1 && 's'} ago • 📍 {order.dropoffLocation}
+                    </Text>
                     <View style={styles.statusPill}>
                       <Text style={styles.statusPillText}>{order.status}</Text>
                     </View>
@@ -85,7 +116,7 @@ export default function OrdersScreen() {
                 </View>
 
                 {/* Progress Stepper for Active Orders */}
-                {order.status !== 'Delivered' && (
+                {!isDelivered && (
                   <View style={styles.stepperContainer}>
                     <View style={styles.stepsRow}>
                       {STATUS_STEPS.map((step, idx) => {
@@ -151,17 +182,37 @@ export default function OrdersScreen() {
                     <Text style={styles.totalAmount}>₱{order.totalPrice}</Text>
                   </View>
 
-                  <TouchableOpacity
-                    style={styles.reorderBtn}
-                    onPress={() =>
-                      router.push({ pathname: '/[id]', params: { id: order.restaurantId } })
-                    }
-                  >
-                    <Ionicons name="refresh" size={16} color="#FFF" />
-                    <Text style={styles.reorderBtnText}>
-                      {order.status === 'Delivered' ? 'Reorder' : 'View Store'}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.actionButtonsRow}>
+                    {/* Rate Rider Button for Past Orders */}
+                    {isDelivered  &&!previousRatings.map(r=>r.order_id).includes(order.id) && (
+                      <TouchableOpacity
+                        style={styles.rateRiderBtn}
+                        onPress={() =>
+                          setRatingTarget({
+                            orderId: order.id,
+                            targetId: order.riderName || 'rider_juan',
+                            targetName: order.riderName || 'UP Rider',
+                            targetType: 'rider',
+                          })
+                        }
+                      >
+                        <Ionicons name="star" size={14} color="#D97706" />
+                        <Text style={styles.rateRiderBtnText}>Rate Rider</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* <TouchableOpacity
+                      style={styles.reorderBtn}
+                      onPress={() =>
+                        router.push({ pathname: '/[id]', params: { id: order.restaurantId } })
+                      }
+                    >
+                      <Ionicons name="refresh" size={16} color="#FFF" />
+                      <Text style={styles.reorderBtnText}>
+                        {isDelivered ? 'Reorder' : 'View Store'}
+                      </Text>
+                    </TouchableOpacity> */}
+                  </View>
                 </View>
               </View>
             );
@@ -169,6 +220,20 @@ export default function OrdersScreen() {
         )}
         <View style={{ height: 30 }} />
       </ScrollView>
+
+      {/* Manual Rating Modal Triggered from Past Orders */}
+      {ratingTarget && (
+        <RatingModal
+          reviewerName={user?.email || "juan"}
+          visible={true}
+          orderId={ratingTarget.orderId}
+          targetId={ratingTarget.targetId}
+          targetName={ratingTarget.targetName}
+          targetType={ratingTarget.targetType}
+          onClose={() => setRatingTarget(null)}
+          onSubmitted={() => setRatingTarget(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -258,6 +323,18 @@ const styles = StyleSheet.create({
   footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { fontSize: 11, color: '#888' },
   totalAmount: { fontSize: 17, fontWeight: 'bold', color: '#222', marginTop: 2 },
+  actionButtonsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rateRiderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  rateRiderBtnText: { color: '#92400E', fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
   reorderBtn: {
     flexDirection: 'row',
     alignItems: 'center',

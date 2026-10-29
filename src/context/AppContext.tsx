@@ -70,6 +70,7 @@ export interface PendingRating {
   targetId: string;
   targetName: string;
   targetType: 'rider' | 'buyer' | 'restaurant';
+  reviewerName: string; // Added reviewer email/name field
 }
 
 interface AppContextType {
@@ -357,13 +358,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     await supabase.from('orders').update({ status: nextStatus }).eq('id', orderId);
 
-    // If buyer advances order to Delivered, trigger rating modal for the Rider
+    // If buyer advances order to Delivered, trigger rating modal for the Rider with reviewerName = user?.email
     if (nextStatus === 'Delivered' && targetOrder.status !== 'Delivered') {
       setPendingRating({
         orderId: targetOrder.id,
         targetId: targetOrder.riderName || 'assigned_rider',
         targetName: targetOrder.riderName || 'UP Delivery Rider',
         targetType: 'rider',
+        reviewerName: user?.email || 'Anonymous Isko',
       });
     }
   };
@@ -411,12 +413,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setCompletedDeliveries((prev) => prev + 1);
       setPoints((prev) => prev + 10);
 
-      // If rider completes the delivery gig, trigger rating modal for the Buyer
+      // If rider completes the delivery gig, trigger rating modal for the Buyer with reviewerName = user?.email
       setPendingRating({
         orderId: targetGig.linkedOrderId || targetGig.id,
         targetId: targetGig.customerName || 'buyer_user',
         targetName: targetGig.customerName || 'Isko Buyer',
         targetType: 'buyer',
+        reviewerName: user?.email || 'Anonymous Rider',
       });
     }
   };

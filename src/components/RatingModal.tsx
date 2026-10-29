@@ -12,6 +12,7 @@ interface RatingModalProps {
   targetId: string;       // e.g., restaurant ID, rider name, or buyer name
   targetName: string;     // e.g., "Rodic's", "Rider Juan", "Anton"
   targetType: 'rider' | 'buyer' | 'restaurant';
+  reviewerName: string;  // Optional reviewer email/name override
   onClose: () => void;
   onSubmitted: () => void;
 }
@@ -22,12 +23,12 @@ export default function RatingModal({
   targetId,
   targetName,
   targetType,
+  reviewerName,
   onClose,
   onSubmitted,
 }: RatingModalProps) {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
-  const [reviewerName, setReviewerName] = useState('Isko Buyer'); // Quick mock reviewer name
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

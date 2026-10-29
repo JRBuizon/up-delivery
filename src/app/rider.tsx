@@ -3,6 +3,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Linking, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import RatingModal from '../components/RatingModal';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../utils/supabase';
 
@@ -22,6 +23,16 @@ export default function RiderScreen() {
   } = useApp();
 
   const [riderRating, setRiderRating] = useState({ average: '5.0', count: 0 });
+  const [tab, setTab] = useState<'available' | 'completed'>('available');
+
+  // State to handle manual rating from completed gigs
+  const [ratingTarget, setRatingTarget] = useState<{
+    orderId: string;
+    targetId: string;
+    targetName: string;
+    targetType: 'rider' | 'buyer' | 'restaurant';
+    reviewerName: string;
+  } | null>(null);
 
   // Fetch live average rating for this rider from Supabase reviews table
   useEffect(() => {
@@ -47,6 +58,7 @@ export default function RiderScreen() {
 
   const activeGigs = gigs.filter((g) => g.status === 'Accepted' || g.status === 'Picked Up');
   const availableGigs = gigs.filter((g) => g.status === 'Available');
+  const completedGigs = gigs.filter((g) => g.status === 'Completed');
 
   const navigateToDropoff = (lat?: number, lng?: number, title?: string) => {
     if (!lat || !lng) {
@@ -62,6 +74,26 @@ export default function RiderScreen() {
     });
     if (url) Linking.openURL(url);
   };
+
+
+
+  const [previousRatings, setPreviousRatings] = useState<any[]>([])
+
+  useEffect(() => {
+      const fetchBuyerRating = async () => {
+        const { data, error } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('target_type', 'buyer')
+          .eq('reviewer_name', user?.email || "Juan");
+        if (!error && data && data.length > 0) {
+          setPreviousRatings(data)
+        }
+      };
+  
+      fetchBuyerRating();
+    }, [user]);
+
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -148,7 +180,7 @@ export default function RiderScreen() {
                   <Text style={styles.primaryActionText}>
                     {gig.status === 'Accepted'
                       ? 'Confirm Order Picked Up'
-                      : `Complete Delivery (+₱${gig.fee})`}
+                      : `Complete Delivery (+₱{gig.fee})`}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -156,58 +188,147 @@ export default function RiderScreen() {
           </View>
         )}
 
-        {/* Available Gigs Near You */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📍 Available Campus Requests</Text>
-          {!riderOnline ? (
-            <View style={styles.offlineCard}>
-              <MaterialCommunityIcons name="sleep" size={40} color="#999" />
-              <Text style={styles.offlineTitle}>You are currently offline</Text>
-              <Text style={styles.offlineSub}>Switch online above to accept campus delivery requests.</Text>
-            </View>
-          ) : availableGigs.length === 0 ? (
-            <View style={styles.offlineCard}>
-              <Ionicons name="checkmark-circle-outline" size={40} color={FOREST_GREEN} />
-              <Text style={styles.offlineTitle}>All caught up!</Text>
-              <Text style={styles.offlineSub}>Place a new order on the Home tab to test delivering it here.</Text>
-            </View>
-          ) : (
-            availableGigs.map((gig) => (
-              <View key={gig.id} style={styles.gigCard}>
-                <View style={styles.gigHeader}>
-                  <View style={styles.distanceBadge}>
-                    <Ionicons name="walk" size={14} color="#555" />
-                    <Text style={styles.distanceText}>{gig.distance} Campus Route</Text>
-                  </View>
-                  <Text style={styles.gigFee}>₱{gig.fee}</Text>
-                </View>
-
-                <View style={styles.routeContainer}>
-                  <View style={styles.routeRow}>
-                    <Ionicons name="storefront-outline" size={16} color={UP_MAROON} />
-                    <Text style={styles.routeText}>From: <Text style={styles.bold}>{gig.pickup}</Text></Text>
-                  </View>
-                  <View style={[styles.routeRow, { marginTop: 6 }]}>
-                    <Ionicons name="flag-outline" size={16} color={FOREST_GREEN} />
-                    <Text style={styles.routeText}>To: <Text style={styles.bold}>{gig.dropoff}</Text></Text>
-                  </View>
-                </View>
-
-                <Text style={styles.itemsSummary}>🧾 {gig.itemsSummary}</Text>
-
-                <TouchableOpacity
-                  style={styles.acceptBtn}
-                  onPress={() => acceptGig(gig.id)}
-                >
-                  <Text style={styles.acceptBtnText}>Accept Campus Delivery</Text>
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
+        {/* Segment Tabs for Gigs */}
+        <View style={styles.segmentContainer}>
+          <TouchableOpacity
+            style={[styles.segmentBtn, tab === 'available' && styles.segmentBtnActive]}
+            onPress={() => setTab('available')}
+          >
+            <Text style={[styles.segmentText, tab === 'available' && styles.segmentTextActive]}>
+              Available ({availableGigs.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segmentBtn, tab === 'completed' && styles.segmentBtnActive]}
+            onPress={() => setTab('completed')}
+          >
+            <Text style={[styles.segmentText, tab === 'completed' && styles.segmentTextActive]}>
+              Completed ({completedGigs.length})
+            </Text>
+          </TouchableOpacity>
         </View>
+
+        {/* Tab Content */}
+        {tab === 'available' ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>📍 Available Campus Requests</Text>
+            {!riderOnline ? (
+              <View style={styles.offlineCard}>
+                <MaterialCommunityIcons name="sleep" size={40} color="#999" />
+                <Text style={styles.offlineTitle}>You are currently offline</Text>
+                <Text style={styles.offlineSub}>Switch online above to accept campus delivery requests.</Text>
+              </View>
+            ) : availableGigs.length === 0 ? (
+              <View style={styles.offlineCard}>
+                <Ionicons name="checkmark-circle-outline" size={40} color={FOREST_GREEN} />
+                <Text style={styles.offlineTitle}>All caught up!</Text>
+                <Text style={styles.offlineSub}>Place a new order on the Home tab to test delivering it here.</Text>
+              </View>
+            ) : (
+              availableGigs.map((gig) => (
+                <View key={gig.id} style={styles.gigCard}>
+                  <View style={styles.gigHeader}>
+                    <View style={styles.distanceBadge}>
+                      <Ionicons name="walk" size={14} color="#555" />
+                      <Text style={styles.distanceText}>{gig.distance} Campus Route</Text>
+                    </View>
+                    <Text style={styles.gigFee}>₱{gig.fee}</Text>
+                  </View>
+
+                  <View style={styles.routeContainer}>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="storefront-outline" size={16} color={UP_MAROON} />
+                      <Text style={styles.routeText}>From: <Text style={styles.bold}>{gig.pickup}</Text></Text>
+                    </View>
+                    <View style={[styles.routeRow, { marginTop: 6 }]}>
+                      <Ionicons name="flag-outline" size={16} color={FOREST_GREEN} />
+                      <Text style={styles.routeText}>To: <Text style={styles.bold}>{gig.dropoff}</Text></Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.itemsSummary}>🧾 {gig.itemsSummary}</Text>
+
+                  <TouchableOpacity
+                    style={styles.acceptBtn}
+                    onPress={() => acceptGig(gig.id)}
+                  >
+                    <Text style={styles.acceptBtnText}>Accept Campus Delivery</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+        ) : (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>✅ Completed Deliveries</Text>
+            {completedGigs.length === 0 ? (
+              <View style={styles.offlineCard}>
+                <Ionicons name="time-outline" size={40} color="#999" />
+                <Text style={styles.offlineTitle}>No completed gigs yet</Text>
+                <Text style={styles.offlineSub}>Deliver orders to see them listed here.</Text>
+              </View>
+            ) : (
+              completedGigs.map((gig) => (
+                <View key={gig.id} style={styles.gigCard}>
+                  <View style={styles.gigHeader}>
+                    <View style={[styles.activeTag, { backgroundColor: '#E5E7EB' }]}>
+                      <Text style={[styles.activeTagText, { color: '#374151' }]}>COMPLETED</Text>
+                    </View>
+                    <Text style={styles.gigFee}>+₱{gig.fee}</Text>
+                  </View>
+
+                  <View style={styles.routeContainer}>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="storefront" size={16} color={UP_MAROON} />
+                      <Text style={styles.routeText}>Pickup: <Text style={styles.bold}>{gig.pickup}</Text></Text>
+                    </View>
+                    <View style={styles.routeLine} />
+                    <View style={styles.routeRow}>
+                      <Ionicons name="location" size={16} color={FOREST_GREEN} />
+                      <Text style={styles.routeText}>Drop-off: <Text style={styles.bold}>{gig.dropoff}</Text></Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.itemsSummary}>📦 {gig.itemsSummary} | Customer: {gig.customerName}</Text>
+
+                  {/* Rate Buyer Button */}
+                  {!previousRatings.map(r=>r.order_id).includes(gig.linkedOrderId) &&  <TouchableOpacity
+                    style={styles.rateBuyerBtn}
+                    onPress={() =>
+                      setRatingTarget({
+                        orderId: gig.linkedOrderId || gig.id,
+                        targetId: gig.customerName,
+                        targetName: gig.customerName,
+                        targetType: 'buyer',
+                        reviewerName: user?.email || 'Anonymous Rider',
+                      })
+                    }
+                  >
+                    <Ionicons name="star" size={14} color="#D97706" />
+                    <Text style={styles.rateBuyerBtnText}>Rate Buyer</Text>
+                  </TouchableOpacity>}
+                </View>
+              ))
+            )}
+          </View>
+        )}
 
         <View style={{ height: 30 }} />
       </ScrollView>
+
+      {/* Manual Rating Modal Trigger */}
+      {ratingTarget && (
+        <RatingModal
+          visible={true}
+          orderId={ratingTarget.orderId}
+          targetId={ratingTarget.targetId}
+          targetName={ratingTarget.targetName}
+          targetType={ratingTarget.targetType}
+          reviewerName={ratingTarget.reviewerName}
+          onClose={() => setRatingTarget(null)}
+          onSubmitted={() => setRatingTarget(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -227,7 +348,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 22,
+    marginBottom: 16,
   },
   earningsLabel: { color: '#FAD2D2', fontSize: 13 },
   earningsAmount: { color: '#FFF', fontSize: 32, fontWeight: '900', marginVertical: 4 },
@@ -236,6 +357,17 @@ const styles = StyleSheet.create({
   statBox: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center', minWidth: 80 },
   statValue: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
   statCaption: { color: '#EEE', fontSize: 10 },
+  segmentContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: '#EAEAEA',
+    borderRadius: 12,
+    padding: 4,
+  },
+  segmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 10 },
+  segmentBtnActive: { backgroundColor: '#FFF', elevation: 2 },
+  segmentText: { fontSize: 13, fontWeight: '600', color: '#666' },
+  segmentTextActive: { color: UP_MAROON, fontWeight: 'bold' },
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 17, fontWeight: 'bold', color: '#333', marginBottom: 12 },
   gigCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 15, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
@@ -269,4 +401,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   navButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
+  rateBuyerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  rateBuyerBtnText: { color: '#92400E', fontSize: 13, fontWeight: 'bold', marginLeft: 6 },
 });
