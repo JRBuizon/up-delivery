@@ -1,9 +1,10 @@
 // src/app/index.tsx
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Image, TouchableOpacity, SafeAreaView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { RESTAURANTS, CATEGORIES } from '../constants/restaurants';
+import { useState } from 'react';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { CATEGORIES, RESTAURANTS } from '../constants/restaurants';
 import { useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
@@ -13,6 +14,7 @@ export default function HomeScreen() {
   const { user, logout } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [menuVisible, setMenuVisible] = useState(false);
 
   // Filter & Sort Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -58,6 +60,31 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Global pressable overlay to close dropdown if tapped outside */}
+        {menuVisible && (
+          <Modal transparent visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+            <Pressable style={styles.menuBackdrop} onPress={() => setMenuVisible(false)}>
+              <View style={[styles.dropdownMenuAbsolute, { top: 65, right: 16 }]}>
+                <View style={styles.dropdownHeader}>
+                  <Text style={styles.dropdownNameText}>{user?.name}</Text>
+                  <Text style={styles.dropdownEmailText}>{user?.email}</Text>
+                </View>
+                <View style={styles.dropdownDivider} />
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    logout();
+                  }}
+                >
+                  <Ionicons name="log-out-outline" size={18} color="#D90429" />
+                  <Text style={styles.dropdownSignOutText}>Sign Out</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Modal>
+        )}
+        
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
@@ -71,18 +98,19 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-          <View style={styles.headerIcons}>
+          <View style={styles.headerRightWrapper}>
             {user ? (
-              <>
+              <TouchableOpacity
+                style={styles.profileTrigger}
+                onPress={() => setMenuVisible(!menuVisible)}
+                activeOpacity={0.8}
+              >
                 <View style={styles.userPill}>
                   <Ionicons name="school-outline" size={13} color={UP_MAROON} />
-                  <Text style={styles.userEmailText}>{user.email}</Text>
+                  <Text style={styles.userEmailText} numberOfLines={1}>{user.email}</Text>
+                  <Ionicons name="chevron-down" size={12} color={UP_MAROON} style={{ marginLeft: 4 }} />
                 </View>
-                <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-                  <Ionicons name="log-out-outline" size={18} color={UP_MAROON} />
-                  <Text style={styles.logoutText}>Sign Out</Text>
-                </TouchableOpacity>
-              </>
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 style={styles.signInButton}
@@ -360,7 +388,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 14,
   },
-  userEmailText: { fontSize: 12, color: UP_MAROON, fontWeight: '600', marginLeft: 4 },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -430,4 +457,27 @@ const styles = StyleSheet.create({
   resetFilterText: { color: '#555', fontWeight: 'bold', fontSize: 14 },
   applyFilterBtn: { flex: 2, backgroundColor: UP_MAROON, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   applyFilterText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  headerRightWrapper: { position: 'relative' },
+  profileTrigger: {},
+  userEmailText: { fontSize: 12, color: UP_MAROON, fontWeight: '600', marginLeft: 4, maxWidth: 120 },
+  menuBackdrop: { flex: 1, backgroundColor: 'transparent' },
+  dropdownMenuAbsolute: {
+    position: 'absolute',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    paddingVertical: 6,
+    width: 200,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#EEE',
+  },
+  dropdownHeader: { paddingHorizontal: 14, paddingVertical: 10 },
+  dropdownNameText: { fontSize: 14, fontWeight: 'bold', color: '#333' },
+  dropdownEmailText: { fontSize: 11, color: '#777', marginTop: 2 },
+  dropdownDivider: { height: 1, backgroundColor: '#EEE' },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 },
+  dropdownSignOutText: { fontSize: 14, fontWeight: '600', color: '#D90429', marginLeft: 8 },
 });
