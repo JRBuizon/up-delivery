@@ -180,7 +180,7 @@ export default function RiderScreen() {
                   <Text style={styles.primaryActionText}>
                     {gig.status === 'Accepted'
                       ? 'Confirm Order Picked Up'
-                      : `Complete Delivery (+₱{gig.fee})`}
+                      : `Complete Delivery (+₱${gig.fee})`}
                   </Text>
                 </TouchableOpacity>
               </View>
