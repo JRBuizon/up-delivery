@@ -1,9 +1,9 @@
 // src/context/AppContext.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../utils/supabase';
 
 const SESSION_KEY = '@up_delivery_session_v1';
-const SHARED_POOL_KEY = '@up_delivery_shared_pool_v1';
 const getUserProfileKey = (email: string) => `@up_delivery_profile_${email.toLowerCase()}`;
 
 export interface User {
@@ -33,6 +33,8 @@ export interface Order {
   discount: number;
   totalPrice: number;
   dropoffLocation: string;
+  latitude?: number;
+  longitude?: number;
   status: OrderStatus;
   createdAt: string;
   riderName: string;
@@ -56,6 +58,8 @@ export interface RiderGig {
   itemsSummary: string;
   customerName: string;
   status: 'Available' | 'Accepted' | 'Picked Up' | 'Completed';
+  latitude?: number;
+  longitude?: number;
   linkedOrderId?: string;
   acceptedByEmail?: string;
 }
@@ -73,33 +77,15 @@ interface AppContextType {
   gigs: RiderGig[];
   login: (email: string, password: string, customName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  placeOrder: (orderData: Omit<Order, 'id' | 'status' | 'createdAt' | 'riderName'>) => void;
-  advanceOrderStatus: (orderId: string) => void;
+  placeOrder: (orderData: Omit<Order, 'id' | 'status' | 'createdAt' | 'riderName'>) => Promise<void>;
+  advanceOrderStatus: (orderId: string) => Promise<void>;
   redeemVoucher: (voucher: Voucher) => boolean;
   selectVoucherForCheckout: (voucher: Voucher | null) => void;
   setRiderOnline: (online: boolean) => void;
-  acceptGig: (gigId: string) => void;
-  advanceGigStatus: (gigId: string) => void;
+  acceptGig: (gigId: string) => Promise<void>;
+  advanceGigStatus: (gigId: string) => Promise<void>;
   resetDemoData: () => Promise<void>;
 }
-
-const INITIAL_ORDERS: Order[] = [
-  {
-    id: 'ORD-1042',
-    restaurantId: 'kanto-cravings',
-    restaurantName: 'Kanto Cravings',
-    restaurantImage: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80',
-    items: [{ id: '1', name: 'Crispy Sisig Rice Bowl', price: 95, quantity: 1 }],
-    subtotal: 95,
-    deliveryFee: 15,
-    discount: 0,
-    totalPrice: 110,
-    dropoffLocation: 'Melchor Hall (Lobby)',
-    status: 'Delivered',
-    createdAt: 'Yesterday, 12:30 PM',
-    riderName: 'Miguel S. (Fellow Isko)',
-  },
-];
 
 const INITIAL_VOUCHERS: Voucher[] = [
   {
@@ -112,40 +98,15 @@ const INITIAL_VOUCHERS: Voucher[] = [
   },
 ];
 
-const INITIAL_GIGS: RiderGig[] = [
-  {
-    id: 'GIG-301',
-    pickup: 'Area 2 Food Stalls',
-    dropoff: 'Palma Hall (AS Steps)',
-    distance: '0.8 km',
-    fee: 25,
-    itemsSummary: '2x Chicken Pastil, 1x Gulaman',
-    customerName: 'Bea R. (bea@up.edu.ph)',
-    status: 'Available',
-  },
-  {
-    id: 'GIG-302',
-    pickup: 'UP Tea Hub',
-    dropoff: 'CS Library (Velasquez St.)',
-    distance: '1.2 km',
-    fee: 30,
-    itemsSummary: '3x Classic Pearl Milk Tea',
-    customerName: 'Carlo D. (carlo@up.edu.ph)',
-    status: 'Available',
-  },
-];
-
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
 
-  // Shared campus state (orders & delivery gigs)
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
-  const [gigs, setGigs] = useState<RiderGig[]>(INITIAL_GIGS);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [gigs, setGigs] = useState<RiderGig[]>([]);
 
-  // Per-user state
   const [points, setPoints] = useState<number>(140);
   const [claimedVouchers, setClaimedVouchers] = useState<Voucher[]>(INITIAL_VOUCHERS);
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
@@ -153,7 +114,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [riderEarnings, setRiderEarnings] = useState<number>(185);
   const [completedDeliveries, setCompletedDeliveries] = useState<number>(7);
 
-  // Helper to load a specific student's profile data
   const loadUserProfile = async (email: string) => {
     try {
       const rawProfile = await AsyncStorage.getItem(getUserProfileKey(email));
@@ -166,7 +126,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setRiderEarnings(typeof parsed.riderEarnings === 'number' ? parsed.riderEarnings : 185);
         setCompletedDeliveries(typeof parsed.completedDeliveries === 'number' ? parsed.completedDeliveries : 7);
       } else {
-        // Fresh UP student profile defaults
         setPoints(140);
         setClaimedVouchers(INITIAL_VOUCHERS);
         setSelectedVoucher(null);
@@ -179,45 +138,94 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 1. Initial hydration on mount
   useEffect(() => {
-    const hydrateAll = async () => {
+    const fetchSupabaseData = async () => {
       try {
-        const [rawSession, rawPool] = await Promise.all([
-          AsyncStorage.getItem(SESSION_KEY),
-          AsyncStorage.getItem(SHARED_POOL_KEY),
+        const [{ data: ordersData }, { data: gigsData }] = await Promise.all([
+          supabase.from('orders').select('*').order('inserted_at', { ascending: false }),
+          supabase.from('gigs').select('*').order('inserted_at', { ascending: false }),
         ]);
 
-        if (rawPool) {
-          const parsedPool = JSON.parse(rawPool);
-          if (Array.isArray(parsedPool.orders)) setOrders(parsedPool.orders);
-          if (Array.isArray(parsedPool.gigs)) setGigs(parsedPool.gigs);
+        if (ordersData) {
+          setOrders(
+            ordersData.map((o: any) => ({
+              id: o.id,
+              customerEmail: o.customer_email,
+              customerName: o.customer_name,
+              restaurantId: o.restaurant_id,
+              restaurantName: o.restaurant_name,
+              restaurantImage: o.restaurant_image,
+              items: o.items,
+              subtotal: Number(o.subtotal),
+              deliveryFee: Number(o.delivery_fee),
+              discount: Number(o.discount),
+              totalPrice: Number(o.total_price),
+              dropoffLocation: o.dropoff_location,
+              latitude: o.latitude ? Number(o.latitude) : undefined,
+              longitude: o.longitude ? Number(o.longitude) : undefined,
+              status: o.status,
+              createdAt: o.created_at,
+              riderName: o.rider_name,
+            }))
+          );
         }
 
+        if (gigsData) {
+          setGigs(
+            gigsData.map((g: any) => ({
+              id: g.id,
+              pickup: g.pickup,
+              dropoff: g.dropoff,
+              distance: g.distance,
+              fee: Number(g.fee),
+              itemsSummary: g.items_summary,
+              customerName: g.customer_name,
+              status: g.status,
+              latitude: g.latitude ? Number(g.latitude) : undefined,
+              longitude: g.longitude ? Number(g.longitude) : undefined,
+              linkedOrderId: g.linked_order_id,
+              acceptedByEmail: g.accepted_by_email,
+            }))
+          );
+        }
+      } catch (err) {
+        console.warn('Error fetching Supabase data:', err);
+      }
+    };
+
+    const hydrateSession = async () => {
+      try {
+        const rawSession = await AsyncStorage.getItem(SESSION_KEY);
         if (rawSession) {
           const savedUser: User = JSON.parse(rawSession);
           setUser(savedUser);
           await loadUserProfile(savedUser.email);
         }
       } catch (error) {
-        console.warn('Failed to hydrate app state:', error);
+        console.warn('Failed to load session:', error);
       } finally {
         setIsHydrated(true);
       }
     };
 
-    hydrateAll();
+    fetchSupabaseData();
+    hydrateSession();
+
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        fetchSupabaseData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gigs' }, () => {
+        fetchSupabaseData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  // 2. Persist shared campus pool (orders & gigs)
-  useEffect(() => {
-    if (!isHydrated) return;
-    AsyncStorage.setItem(SHARED_POOL_KEY, JSON.stringify({ orders, gigs })).catch((err) =>
-      console.warn('Failed to save shared pool:', err)
-    );
-  }, [isHydrated, orders, gigs]);
-
-  // 3. Persist individual student profile
   useEffect(() => {
     if (!isHydrated || !user) return;
     const profileData = {
@@ -231,16 +239,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(getUserProfileKey(user.email), JSON.stringify(profileData)).catch((err) =>
       console.warn('Failed to save user profile:', err)
     );
-  }, [
-    isHydrated,
-    user,
-    points,
-    claimedVouchers,
-    selectedVoucher,
-    riderOnline,
-    riderEarnings,
-    completedDeliveries,
-  ]);
+  }, [isHydrated, user, points, claimedVouchers, selectedVoucher, riderOnline, riderEarnings, completedDeliveries]);
 
   const login: AppContextType['login'] = async (email, password, customName) => {
     const cleanEmail = email.trim().toLowerCase();
@@ -253,17 +252,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (password.trim().length < 4) {
-      return {
-        success: false,
-        error: 'Password must be at least 4 characters.',
-      };
+      return { success: false, error: 'Password must be at least 4 characters.' };
     }
 
     const prefix = cleanEmail.split('@')[0].replace(/[._0-9]/g, ' ').trim();
-    const formattedPrefix =
-      prefix.length > 0
-        ? prefix.charAt(0).toUpperCase() + prefix.slice(1)
-        : 'Iskolar';
+    const formattedPrefix = prefix.length > 0 ? prefix.charAt(0).toUpperCase() + prefix.slice(1) : 'Iskolar';
 
     const loggedInUser: User = {
       email: cleanEmail,
@@ -281,21 +274,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.removeItem(SESSION_KEY);
   };
 
-  const placeOrder: AppContextType['placeOrder'] = (orderData) => {
+  const placeOrder: AppContextType['placeOrder'] = async (orderData) => {
     const newOrderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
     const customerLabel = user ? `${user.name} (${user.email})` : 'Fellow Iskolar';
+    const createdAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const newOrder: Order = {
-      ...orderData,
+    const newOrderPayload = {
       id: newOrderId,
-      customerEmail: user?.email,
-      customerName: user?.name,
+      customer_email: user?.email,
+      customer_name: user?.name,
+      restaurant_id: orderData.restaurantId,
+      restaurant_name: orderData.restaurantName,
+      restaurant_image: orderData.restaurantImage,
+      items: orderData.items,
+      subtotal: orderData.subtotal,
+      delivery_fee: orderData.deliveryFee,
+      discount: orderData.discount,
+      total_price: orderData.totalPrice,
+      dropoff_location: orderData.dropoffLocation,
+      latitude: orderData.latitude,
+      longitude: orderData.longitude,
       status: 'Confirmed',
-      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      riderName: 'Waiting for a fellow Isko Rider...',
+      created_at: createdAt,
+      rider_name: 'Waiting for a fellow Isko Rider...',
     };
 
-    setOrders((prev) => [newOrder, ...prev]);
+    const newGigPayload = {
+      id: `GIG-${Math.floor(400 + Math.random() * 500)}`,
+      pickup: orderData.restaurantName,
+      dropoff: orderData.dropoffLocation,
+      distance: '0.9 km',
+      fee: 25,
+      items_summary: orderData.items.map((i) => `${i.quantity}x ${i.name}`).join(', '),
+      customer_name: customerLabel,
+      status: 'Available',
+      latitude: orderData.latitude,
+      longitude: orderData.longitude,
+      linked_order_id: newOrderId,
+    };
+
+    await Promise.all([
+      supabase.from('orders').insert([newOrderPayload]),
+      supabase.from('gigs').insert([newGigPayload]),
+    ]);
 
     const earnedPoints = Math.max(5, Math.floor(orderData.totalPrice / 10));
     setPoints((prev) => prev + earnedPoints);
@@ -304,48 +325,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setClaimedVouchers((prev) => prev.filter((v) => v.id !== selectedVoucher.id));
       setSelectedVoucher(null);
     }
-
-    // Add to shared campus Rider Gigs so any online UP student can deliver it
-    const newGig: RiderGig = {
-      id: `GIG-${Math.floor(400 + Math.random() * 500)}`,
-      pickup: orderData.restaurantName,
-      dropoff: orderData.dropoffLocation,
-      distance: '0.9 km',
-      fee: 25,
-      itemsSummary: orderData.items.map((i) => `${i.quantity}x ${i.name}`).join(', '),
-      customerName: customerLabel,
-      status: 'Available',
-      linkedOrderId: newOrderId,
-    };
-    setGigs((prev) => [newGig, ...prev]);
   };
 
-  const advanceOrderStatus = (orderId: string) => {
+  const advanceOrderStatus = async (orderId: string) => {
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (!targetOrder) return;
+
     const flow: OrderStatus[] = ['Confirmed', 'Preparing', 'On the Way', 'Delivered'];
-    setOrders((prev) =>
-      prev.map((order) => {
-        if (order.id !== orderId) return order;
-        const currentIndex = flow.indexOf(order.status);
-        const nextStatus = flow[Math.min(currentIndex + 1, flow.length - 1)];
-        return {
-          ...order,
-          status: nextStatus,
-          riderName:
-            nextStatus === 'Confirmed'
-              ? 'Waiting for a fellow Isko Rider...'
-              : `${user?.name || 'Isko'} (Student Rider)`,
-        };
-      })
-    );
+    const currentIndex = flow.indexOf(targetOrder.status);
+    const nextStatus = flow[Math.min(currentIndex + 1, flow.length - 1)];
+    const newRiderName = nextStatus === 'Confirmed' ? 'Waiting for a fellow Isko Rider...' : `${user?.name || 'Isko'} (Student Rider)`;
+
+    await supabase.from('orders').update({ status: nextStatus, rider_name: newRiderName }).eq('id', orderId);
   };
 
   const redeemVoucher = (voucher: Voucher): boolean => {
     if (points < voucher.pointsCost) return false;
     setPoints((prev) => prev - voucher.pointsCost);
-    const uniqueVoucher: Voucher = {
-      ...voucher,
-      id: `${voucher.id}-${Date.now()}`,
-    };
+    const uniqueVoucher: Voucher = { ...voucher, id: `${voucher.id}-${Date.now()}` };
     setClaimedVouchers((prev) => [uniqueVoucher, ...prev]);
     return true;
   };
@@ -354,65 +351,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSelectedVoucher(voucher);
   };
 
-  const acceptGig = (gigId: string) => {
+  const acceptGig = async (gigId: string) => {
     const riderLabel = user ? `${user.name} (${user.email})` : 'Fellow Isko Rider';
-    setGigs((prev) =>
-      prev.map((g) =>
-        g.id === gigId ? { ...g, status: 'Accepted', acceptedByEmail: user?.email } : g
-      )
-    );
     const targetGig = gigs.find((g) => g.id === gigId);
-    if (targetGig?.linkedOrderId) {
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === targetGig.linkedOrderId
-            ? { ...o, status: 'Preparing', riderName: riderLabel }
-            : o
-        )
-      );
-    }
+    if (!targetGig) return;
+
+    await Promise.all([
+      supabase.from('gigs').update({ status: 'Accepted', accepted_by_email: user?.email }).eq('id', gigId),
+      targetGig.linkedOrderId
+        ? supabase.from('orders').update({ status: 'Preparing', rider_name: riderLabel }).eq('id', targetGig.linkedOrderId)
+        : Promise.resolve(),
+    ]);
   };
 
-  const advanceGigStatus = (gigId: string) => {
+  const advanceGigStatus = async (gigId: string) => {
     const targetGig = gigs.find((g) => g.id === gigId);
     if (!targetGig) return;
 
     if (targetGig.status === 'Accepted') {
-      setGigs((prev) =>
-        prev.map((g) => (g.id === gigId ? { ...g, status: 'Picked Up' } : g))
-      );
-      if (targetGig.linkedOrderId) {
-        setOrders((prev) =>
-          prev.map((o) =>
-            o.id === targetGig.linkedOrderId ? { ...o, status: 'On the Way' } : o
-          )
-        );
-      }
+      await Promise.all([
+        supabase.from('gigs').update({ status: 'Picked Up' }).eq('id', gigId),
+        targetGig.linkedOrderId ? supabase.from('orders').update({ status: 'On the Way' }).eq('id', targetGig.linkedOrderId) : Promise.resolve(),
+      ]);
     } else if (targetGig.status === 'Picked Up') {
-      setGigs((prev) =>
-        prev.map((g) => (g.id === gigId ? { ...g, status: 'Completed' } : g))
-      );
+      await Promise.all([
+        supabase.from('gigs').update({ status: 'Completed' }).eq('id', gigId),
+        targetGig.linkedOrderId ? supabase.from('orders').update({ status: 'Delivered' }).eq('id', targetGig.linkedOrderId) : Promise.resolve(),
+      ]);
       setRiderEarnings((prev) => prev + targetGig.fee);
       setCompletedDeliveries((prev) => prev + 1);
       setPoints((prev) => prev + 10);
-      if (targetGig.linkedOrderId) {
-        setOrders((prev) =>
-          prev.map((o) =>
-            o.id === targetGig.linkedOrderId ? { ...o, status: 'Delivered' } : o
-          )
-        );
-      }
     }
   };
 
   const resetDemoData = async () => {
     try {
-      await AsyncStorage.removeItem(SHARED_POOL_KEY);
+      await Promise.all([
+        supabase.from('orders').delete().neq('id', ''),
+        supabase.from('gigs').delete().neq('id', ''),
+      ]);
       if (user) {
         await AsyncStorage.removeItem(getUserProfileKey(user.email));
       }
-      setOrders(INITIAL_ORDERS);
-      setGigs(INITIAL_GIGS);
       setPoints(140);
       setClaimedVouchers(INITIAL_VOUCHERS);
       setSelectedVoucher(null);

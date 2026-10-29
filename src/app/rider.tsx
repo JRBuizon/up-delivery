@@ -1,7 +1,7 @@
 // src/app/rider.tsx
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Switch } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Linking, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
@@ -20,6 +20,21 @@ export default function RiderScreen() {
 
   const activeGigs = gigs.filter((g) => g.status === 'Accepted' || g.status === 'Picked Up');
   const availableGigs = gigs.filter((g) => g.status === 'Available');
+
+  const navigateToDropoff = (lat?: number, lng?: number, title?: string) => {
+    if (!lat || !lng) {
+      alert('Coordinates not available for this delivery point.');
+      return;
+    }
+    const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
+    const latLng = `${lat},${lng}`;
+    const label = encodeURIComponent(title || 'Campus Drop-off');
+    const url = Platform.select({
+      ios: `${scheme}${label}@${latLng}`,
+      android: `${scheme}${latLng}(${label})`,
+    });
+    if (url) Linking.openURL(url);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -89,6 +104,16 @@ export default function RiderScreen() {
 
                 <Text style={styles.itemsSummary}>📦 {gig.itemsSummary} • Customer: {gig.customerName}</Text>
 
+                {gig.latitude && gig.longitude && (
+                  <TouchableOpacity
+                    style={styles.navButton}
+                    onPress={() => navigateToDropoff(gig.latitude, gig.longitude, gig.dropoff)}
+                  >
+                    <Ionicons name="navigate" size={16} color="#FFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.navButtonText}>Navigate to Drop-off 🧭</Text>
+                  </TouchableOpacity>
+                )}
+                
                 <TouchableOpacity
                   style={styles.primaryActionBtn}
                   onPress={() => advanceGigStatus(gig.id)}
@@ -207,4 +232,13 @@ const styles = StyleSheet.create({
   offlineCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 28, alignItems: 'center' },
   offlineTitle: { fontSize: 16, fontWeight: 'bold', color: '#444', marginTop: 10 },
   offlineSub: { fontSize: 13, color: '#888', textAlign: 'center', marginTop: 4 },
+  navButton: {
+    backgroundColor: '#007AFF',
+    flexDirection: 'row',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
 });

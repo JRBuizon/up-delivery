@@ -51,6 +51,8 @@ export default function CheckoutScreen() {
         discount: parseFloat(params.discount || '0'),
         totalPrice: parseFloat(params.totalPrice || '0'),
         dropoffLocation: selectedDropoff.name,
+        latitude: selectedDropoff.latitude,
+        longitude: selectedDropoff.longitude,
       });
 
       Alert.alert('Order Placed! 🎉', `Your delivery is on its way to ${selectedDropoff.name}.`, [
