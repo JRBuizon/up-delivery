@@ -1,14 +1,17 @@
 // src/app/rider.tsx
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import { Linking, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
+import { supabase } from '../utils/supabase';
 
 const UP_MAROON = '#7B1113';
 const FOREST_GREEN = '#2D6A4F';
 
 export default function RiderScreen() {
   const {
+    user,
     riderOnline,
     setRiderOnline,
     riderEarnings,
@@ -17,6 +20,30 @@ export default function RiderScreen() {
     acceptGig,
     advanceGigStatus,
   } = useApp();
+
+  const [riderRating, setRiderRating] = useState({ average: '5.0', count: 0 });
+
+  // Fetch live average rating for this rider from Supabase reviews table
+  useEffect(() => {
+    const fetchRiderRating = async () => {
+      const riderEmail = user?.email || 'juan@up.edu.ph';
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('rating')
+        .eq('target_type', 'rider')
+        .or(`target_id.eq.${riderEmail},target_id.eq.rider_juan`);
+        
+      if (!error && data && data.length > 0) {
+        const total = data.reduce((sum, r) => sum + r.rating, 0);
+        setRiderRating({
+          average: (total / data.length).toFixed(1),
+          count: data.length,
+        });
+      }
+    };
+
+    fetchRiderRating();
+  }, [user, completedDeliveries]);
 
   const activeGigs = gigs.filter((g) => g.status === 'Accepted' || g.status === 'Picked Up');
   const availableGigs = gigs.filter((g) => g.status === 'Available');
@@ -71,8 +98,8 @@ export default function RiderScreen() {
               <Text style={styles.statCaption}>Trips</Text>
             </View>
             <View style={[styles.statBox, { marginTop: 8 }]}>
-              <Text style={styles.statValue}>4.9 ⭐</Text>
-              <Text style={styles.statCaption}>Rating</Text>
+              <Text style={styles.statValue}>{riderRating.average} ⭐</Text>
+              <Text style={styles.statCaption}>{riderRating.count} reviews</Text>
             </View>
           </View>
         </View>
@@ -102,7 +129,7 @@ export default function RiderScreen() {
                   </View>
                 </View>
 
-                <Text style={styles.itemsSummary}>📦 {gig.itemsSummary} • Customer: {gig.customerName}</Text>
+                <Text style={styles.itemsSummary}>📦 {gig.itemsSummary} | Customer: {gig.customerName}</Text>
 
                 {gig.latitude && gig.longitude && (
                   <TouchableOpacity
@@ -150,7 +177,7 @@ export default function RiderScreen() {
                 <View style={styles.gigHeader}>
                   <View style={styles.distanceBadge}>
                     <Ionicons name="walk" size={14} color="#555" />
-                    <Text style={styles.distanceText}>{gig.distance} • Campus Route</Text>
+                    <Text style={styles.distanceText}>{gig.distance} Campus Route</Text>
                   </View>
                   <Text style={styles.gigFee}>₱{gig.fee}</Text>
                 </View>
@@ -227,7 +254,7 @@ const styles = StyleSheet.create({
   itemsSummary: { fontSize: 12, color: '#666', marginBottom: 12 },
   acceptBtn: { backgroundColor: UP_MAROON, paddingVertical: 11, borderRadius: 10, alignItems: 'center' },
   acceptBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
-  primaryActionBtn: { backgroundColor: FOREST_GREEN, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  primaryActionBtn: { backgroundColor: FOREST_GREEN, paddingVertical: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 },
   primaryActionText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
   offlineCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 28, alignItems: 'center' },
   offlineTitle: { fontSize: 16, fontWeight: 'bold', color: '#444', marginTop: 10 },
@@ -239,6 +266,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
   },
   navButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
 });

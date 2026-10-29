@@ -35,7 +35,7 @@ export interface Order {
   dropoffLocation: string;
   latitude?: number;
   longitude?: number;
-  distanceKm?: number; // Added to pass the calculated distance down to the rider gig
+  distanceKm?: number;
   status: OrderStatus;
   createdAt: string;
   riderName: string;
@@ -65,6 +65,13 @@ export interface RiderGig {
   acceptedByEmail?: string;
 }
 
+export interface PendingRating {
+  orderId: string;
+  targetId: string;
+  targetName: string;
+  targetType: 'rider' | 'buyer' | 'restaurant';
+}
+
 interface AppContextType {
   isHydrated: boolean;
   user: User | null;
@@ -76,6 +83,8 @@ interface AppContextType {
   riderEarnings: number;
   completedDeliveries: number;
   gigs: RiderGig[];
+  pendingRating: PendingRating | null;
+  clearPendingRating: () => void;
   login: (email: string, password: string, customName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   placeOrder: (orderData: Omit<Order, 'id' | 'status' | 'createdAt' | 'riderName'>) => Promise<void>;
@@ -114,6 +123,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [riderOnline, setRiderOnline] = useState<boolean>(true);
   const [riderEarnings, setRiderEarnings] = useState<number>(185);
   const [completedDeliveries, setCompletedDeliveries] = useState<number>(7);
+  
+  // Rating Modal state
+  const [pendingRating, setPendingRating] = useState<PendingRating | null>(null);
 
   const loadUserProfile = async (email: string) => {
     try {
@@ -277,7 +289,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const placeOrder: AppContextType['placeOrder'] = async (orderData) => {
     const newOrderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
-    const customerLabel = user ? `${user.name} (${user.email})` : 'Fellow Iskolar';
+    const customerLabel = user ? user.email : 'Fellow Iskolar';
     const createdAt = new Date().toISOString();
 
     const newOrderPayload = {
@@ -300,20 +312,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       rider_name: 'Waiting for a fellow Isko Rider...',
     };
 
-    // 2. Insert Order First
     const { error: orderError } = await supabase.from('orders').insert([newOrderPayload]);
     if (orderError) {
       console.error('❌ Failed to create order in Supabase:', orderError.message);
       return;
     }
 
-    // 3. Prepare Gig Payload (Linked to order ID)
     const newGigPayload = {
       id: `GIG-${Math.floor(400 + Math.random() * 500)}`,
       pickup: orderData.restaurantName,
       dropoff: orderData.dropoffLocation,
-      distance: orderData.distanceKm ? `${orderData.distanceKm} km` : '1.0 km', // Synchronized distance
-      fee: orderData.deliveryFee, // Synchronized with calculated delivery fee
+      distance: orderData.distanceKm ? `${orderData.distanceKm} km` : '1.0 km',
+      fee: orderData.deliveryFee,
       items_summary: orderData.items.map((i) => `${i.quantity}x ${i.name}`).join(', '),
       customer_name: customerLabel,
       status: 'Available',
@@ -322,15 +332,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       linked_order_id: newOrderId,
     };
 
-    // 4. Insert Gig
     const { error: gigError } = await supabase.from('gigs').insert([newGigPayload]);
     if (gigError) {
       console.error('❌ Failed to create rider gig in Supabase:', gigError.message, gigError.details);
-    } else {
-      console.log('✅ Order & Rider Gig successfully created!');
     }
 
-    // 5. Update local points/vouchers
     const earnedPoints = Math.max(5, Math.floor(orderData.totalPrice / 10));
     setPoints((prev) => prev + earnedPoints);
 
@@ -346,10 +352,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const flow: OrderStatus[] = ['Confirmed', 'Preparing', 'On the Way', 'Delivered'];
     const currentIndex = flow.indexOf(targetOrder.status);
-    const nextStatus = flow[Math.min(currentIndex + 1, flow.length - 1)];
-    const newRiderName = nextStatus === 'Confirmed' ? 'Waiting for a fellow Isko Rider...' : `${user?.name || 'Isko'} (Student Rider)`;
+    const nextIndex = Math.min(currentIndex + 1, flow.length - 1);
+    const nextStatus = flow[nextIndex];
 
-    await supabase.from('orders').update({ status: nextStatus, rider_name: newRiderName }).eq('id', orderId);
+    await supabase.from('orders').update({ status: nextStatus }).eq('id', orderId);
+
+    // If buyer advances order to Delivered, trigger rating modal for the Rider
+    if (nextStatus === 'Delivered' && targetOrder.status !== 'Delivered') {
+      setPendingRating({
+        orderId: targetOrder.id,
+        targetId: targetOrder.riderName || 'assigned_rider',
+        targetName: targetOrder.riderName || 'UP Delivery Rider',
+        targetType: 'rider',
+      });
+    }
   };
 
   const redeemVoucher = (voucher: Voucher): boolean => {
@@ -365,7 +381,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const acceptGig = async (gigId: string) => {
-    const riderLabel = user ? `${user.name} (${user.email})` : 'Fellow Isko Rider';
+    const riderLabel = user ? user.email : 'Fellow Isko Rider';
     const targetGig = gigs.find((g) => g.id === gigId);
     if (!targetGig) return;
 
@@ -394,7 +410,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setRiderEarnings((prev) => prev + targetGig.fee);
       setCompletedDeliveries((prev) => prev + 1);
       setPoints((prev) => prev + 10);
+
+      // If rider completes the delivery gig, trigger rating modal for the Buyer
+      setPendingRating({
+        orderId: targetGig.linkedOrderId || targetGig.id,
+        targetId: targetGig.customerName || 'buyer_user',
+        targetName: targetGig.customerName || 'Isko Buyer',
+        targetType: 'buyer',
+      });
     }
+  };
+
+  const clearPendingRating = () => {
+    setPendingRating(null);
   };
 
   const resetDemoData = async () => {
@@ -412,6 +440,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setRiderOnline(true);
       setRiderEarnings(185);
       setCompletedDeliveries(7);
+      setPendingRating(null);
     } catch (error) {
       console.warn('Failed to reset demo data:', error);
     }
@@ -430,6 +459,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         riderEarnings,
         completedDeliveries,
         gigs,
+        pendingRating,
+        clearPendingRating,
         login,
         logout,
         placeOrder,

@@ -4,11 +4,32 @@ import { Stack, usePathname, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import RatingModal from '../components/RatingModal';
 import { AppProvider, useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
 const INACTIVE_COLOR = '#8E8E93';
 const PROTECTED_ROUTES = ['/orders', '/rider', '/rewards'];
+
+function GlobalRatingOverlay() {
+  const { pendingRating, clearPendingRating } = useApp();
+
+  if (!pendingRating) return null;
+
+  return (
+    <RatingModal
+      visible={true}
+      orderId={pendingRating.orderId}
+      targetId={pendingRating.targetId}
+      targetName={pendingRating.targetName}
+      targetType={pendingRating.targetType}
+      onClose={clearPendingRating}
+      onSubmitted={() => {
+        clearPendingRating();
+      }}
+    />
+  );
+}
 
 function NavigationShell() {
   const insets = useSafeAreaInsets();
@@ -19,7 +40,6 @@ function NavigationShell() {
   useEffect(() => {
     if (!isHydrated) return;
 
-    // Only redirect unauthenticated users if they try to access a protected route
     if (!user && PROTECTED_ROUTES.includes(pathname)) {
       router.replace('/login' as any);
     }
@@ -41,7 +61,6 @@ function NavigationShell() {
       ).length
     : 0;
 
-  // Show the bottom tab bar on the main tabs even for guests
   const showTabBar = ['/', '/orders', '/rider', '/rewards'].includes(pathname);
 
   const handleProtectedTabPress = (targetPath: string) => {
@@ -57,6 +76,9 @@ function NavigationShell() {
       <View style={styles.content}>
         <Stack screenOptions={{ headerShown: false }} />
       </View>
+
+      {/* Global Rating Modal Popup Overlay */}
+      <GlobalRatingOverlay />
 
       {showTabBar && (
         <View style={[styles.tabBar, { paddingBottom: insets.bottom }]}>
