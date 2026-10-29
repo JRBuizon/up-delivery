@@ -106,4 +106,55 @@ export const RESTAURANTS: Restaurant[] = [
       },
     ],
   },
+  {
+    id: 'knl-lomian',
+    name: 'KNL Lomian',
+    category: 'Snacks',
+    priceRange: '₱',
+    rating: 4.4,
+    deliveryTime: '25-35 min',
+    image: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=500&q=80',
+    isPopular: false,
+    isStudentOwned: false,
+    latitude: 14.647500, // Krus na Ligas (Proper)
+    longitude: 121.061000,
+    menu: [
+      {
+        id: 'kl-1',
+        name: 'Special Lomi',
+        description: 'Thick egg noodles in hearty soup with pork liver, kikiam, and quail eggs.',
+        price: 75,
+        image: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=500&q=80',
+      }
+    ]
+  },
+  {
+    id: 'maginhawa-grills',
+    name: 'Maginhawa Grills',
+    category: 'Rice Meals',
+    priceRange: '₱₱',
+    rating: 4.9,
+    deliveryTime: '30-45 min',
+    image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=500&q=80',
+    isPopular: true,
+    isStudentOwned: false,
+    latitude: 14.643600, // Maginhawa Street
+    longitude: 121.059200,
+    menu: [
+      {
+        id: 'mg-1',
+        name: 'Pork BBQ Meal',
+        description: '2 pieces of sweet and savory pork BBQ skewers with java rice and spiced vinegar.',
+        price: 150,
+        image: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80',
+      },
+      {
+        id: 'mg-2',
+        name: 'Inihaw na Pusit',
+        description: 'Fresh grilled squid stuffed with tomatoes and onions.',
+        price: 220,
+        image: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&q=80',
+      }
+    ]
+  }
 ];
