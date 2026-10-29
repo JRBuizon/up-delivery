@@ -1,6 +1,6 @@
 // src/app/rewards.tsx
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useApp, Voucher } from '../context/AppContext';
@@ -35,7 +35,7 @@ const REWARD_CATALOG: Voucher[] = [
 ];
 
 export default function RewardsScreen() {
-  const { points, claimedVouchers, selectedVoucher, redeemVoucher, selectVoucherForCheckout } = useApp();
+  const { points, claimedVouchers, selectedVoucher, redeemVoucher, selectVoucherForCheckout, resetDemoData } = useApp();
   const router = useRouter();
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -47,6 +47,29 @@ export default function RewardsScreen() {
       setFeedback(`Not enough points yet. Place an order or complete a Rider trip to earn more!`);
     }
     setTimeout(() => setFeedback(null), 3500);
+  };
+
+  const handleResetData = () => {
+    const performReset = async () => {
+      await resetDemoData();
+      setFeedback('🧹 Account data and shared orders have been reset successfully.');
+      setTimeout(() => setFeedback(null), 4000);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to reset your account data, points, and orders?')) {
+        performReset();
+      }
+    } else {
+      Alert.alert(
+        'Reset Account Data',
+        'Are you sure you want to reset your points, vouchers, and active orders back to default?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Reset', style: 'destructive', onPress: performReset },
+        ]
+      );
+    }
   };
 
   return (
@@ -134,6 +157,12 @@ export default function RewardsScreen() {
             </View>
           );
         })}
+
+        {/* Reset Account Data Button */}
+        <TouchableOpacity style={styles.resetButton} onPress={handleResetData}>
+          <Ionicons name="trash-outline" size={16} color={UP_MAROON} />
+          <Text style={styles.resetButtonText}>Reset My Account Data & Orders</Text>
+        </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -225,4 +254,16 @@ const styles = StyleSheet.create({
   redeemBtn: { backgroundColor: '#F4A261', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   redeemBtnDisabled: { backgroundColor: '#DDD' },
   redeemBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FDF0ED',
+    borderWidth: 1,
+    borderColor: '#F5C6CB',
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 18,
+  },
+  resetButtonText: { color: UP_MAROON, fontSize: 13, fontWeight: 'bold', marginLeft: 6 },
 });

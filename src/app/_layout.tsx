@@ -1,21 +1,56 @@
 // src/app/_layout.tsx
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Stack, usePathname, useRouter } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppProvider, useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
 const INACTIVE_COLOR = '#8E8E93';
+const PROTECTED_ROUTES = ['/orders', '/rider', '/rewards'];
 
 function NavigationShell() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const router = useRouter();
-  const { orders } = useApp();
+  const { isHydrated, user, orders } = useApp();
 
-  const activeOrderCount = orders.filter((o) => o.status !== 'Delivered').length;
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    // Only redirect unauthenticated users if they try to access a protected route
+    if (!user && PROTECTED_ROUTES.includes(pathname)) {
+      router.replace('/login' as any);
+    }
+  }, [isHydrated, user, pathname]);
+
+  if (!isHydrated) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={UP_MAROON} />
+      </View>
+    );
+  }
+
+  const activeOrderCount = user
+    ? orders.filter(
+        (o) =>
+          o.status !== 'Delivered' &&
+          (!o.customerEmail || o.customerEmail === user.email)
+      ).length
+    : 0;
+
+  // Show the bottom tab bar on the main tabs even for guests
   const showTabBar = ['/', '/orders', '/rider', '/rewards'].includes(pathname);
+
+  const handleProtectedTabPress = (targetPath: string) => {
+    if (!user) {
+      router.push('/login' as any);
+    } else {
+      router.replace(targetPath as any);
+    }
+  };
 
   return (
     <SafeAreaProvider style={styles.container}>
@@ -46,7 +81,7 @@ function NavigationShell() {
 
           <TouchableOpacity
             style={styles.tabItem}
-            onPress={() => router.replace('/orders' as any)}
+            onPress={() => handleProtectedTabPress('/orders')}
           >
             <View style={{ position: 'relative' }}>
               <Ionicons
@@ -72,7 +107,7 @@ function NavigationShell() {
 
           <TouchableOpacity
             style={styles.tabItem}
-            onPress={() => router.replace('/rider' as any)}
+            onPress={() => handleProtectedTabPress('/rider')}
           >
             <MaterialCommunityIcons
               name="moped"
@@ -91,7 +126,7 @@ function NavigationShell() {
 
           <TouchableOpacity
             style={styles.tabItem}
-            onPress={() => router.replace('/rewards' as any)}
+            onPress={() => handleProtectedTabPress('/rewards')}
           >
             <Ionicons
               name="star-outline"

@@ -10,12 +10,16 @@ const UP_MAROON = '#7B1113';
 const STATUS_STEPS: OrderStatus[] = ['Confirmed', 'Preparing', 'On the Way', 'Delivered'];
 
 export default function OrdersScreen() {
-  const { orders, advanceOrderStatus } = useApp();
+  const { user, orders, advanceOrderStatus } = useApp();
   const router = useRouter();
   const [tab, setTab] = useState<'active' | 'past'>('active');
 
-  const activeOrders = orders.filter((o) => o.status !== 'Delivered');
-  const pastOrders = orders.filter((o) => o.status === 'Delivered');
+  // Show orders placed by the logged-in student (plus initial seed order)
+  const myOrders = orders.filter(
+    (o) => !o.customerEmail || o.customerEmail === user?.email
+  );
+  const activeOrders = myOrders.filter((o) => o.status !== 'Delivered');
+  const pastOrders = myOrders.filter((o) => o.status === 'Delivered');
   const displayedOrders = tab === 'active' ? activeOrders : pastOrders;
 
   return (

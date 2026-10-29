@@ -1,21 +1,27 @@
 // src/app/index.tsx
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Image, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Image, TouchableOpacity, SafeAreaView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { RESTAURANTS, CATEGORIES } from '../constants/restaurants';
+import { useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { user, logout } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter restaurants for "Popular Near You"
+  // Filter & Sort Modal State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [studentOwnedOnly, setStudentOwnedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<'default' | 'rating' | 'time'>('default');
+
   const popularRestaurants = RESTAURANTS.filter((r) => r.isPopular);
 
-  // Filter restaurants for "All Restaurants" based on category & search input
+  // Filter and Sort Restaurants for "All Restaurants"
   const filteredRestaurants = RESTAURANTS.filter((restaurant) => {
     const matchesCategory =
       selectedCategory === 'All' ||
@@ -28,12 +34,27 @@ export default function HomeScreen() {
         item.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
-    return matchesCategory && matchesSearch;
+    const matchesStudentFilter = !studentOwnedOnly || restaurant.isStudentOwned;
+
+    return matchesCategory && matchesSearch && matchesStudentFilter;
+  }).sort((a, b) => {
+    if (sortBy === 'rating') {
+      return b.rating - a.rating;
+    }
+    if (sortBy === 'time') {
+      // Extract numeric minutes from deliveryTime string (e.g., "15-20 min" -> 15)
+      const timeA = parseInt(a.deliveryTime) || 0;
+      const timeB = parseInt(b.deliveryTime) || 0;
+      return timeA - timeB;
+    }
+    return 0;
   });
 
   const handleRestaurantPress = (id: string) => {
     router.push({ pathname: '/[id]', params: { id } });
   };
+
+  const activeFilterCount = (studentOwnedOnly ? 1 : 0) + (sortBy !== 'default' ? 1 : 0);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -51,20 +72,39 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={styles.headerIcons}>
-            <TouchableOpacity style={styles.iconButton}>
-              <Ionicons name="notifications-outline" size={24} color="#333" />
-              <View style={styles.notificationDot} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}>
-              <Ionicons name="person-circle-outline" size={28} color={UP_MAROON} />
-            </TouchableOpacity>
+            {user ? (
+              <>
+                <View style={styles.userPill}>
+                  <Ionicons name="school-outline" size={13} color={UP_MAROON} />
+                  <Text style={styles.userEmailText}>{user.email}</Text>
+                </View>
+                <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+                  <Ionicons name="log-out-outline" size={18} color={UP_MAROON} />
+                  <Text style={styles.logoutText}>Sign Out</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.signInButton}
+                onPress={() => router.push('/login' as any)}
+              >
+                <Ionicons name="log-in-outline" size={18} color="#FFF" />
+                <Text style={styles.signInText}>UP Mail Sign In</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
         {/* Greeting */}
         <View style={styles.greetingContainer}>
-          <Text style={styles.greetingTitle}>{"Good morning,\nIskolar!"}</Text>
-          <Text style={styles.greetingSubtitle}>Great food, closer to you. ❤️</Text>
+          <Text style={styles.greetingTitle}>
+            {`Good morning,\n${user ? user.name : 'Iskolar'}!`}
+          </Text>
+          <Text style={styles.greetingSubtitle}>
+            {user
+              ? 'Great food, closer to you. ❤️'
+              : 'Browsing as Guest • Sign in with UP Mail to order or deliver'}
+          </Text>
         </View>
 
         {/* Search Input */}
@@ -169,11 +209,11 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
 
-        {/* All Restaurants Section */}
+        {/* All Restaurants Section with Filter Trigger */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>All Restaurants</Text>
-          <TouchableOpacity style={styles.filterBtn}>
-            <Text style={styles.filterText}>Filter</Text>
+          <Text style={styles.sectionTitle}>All Restaurants ({filteredRestaurants.length})</Text>
+          <TouchableOpacity style={styles.filterBtn} onPress={() => setModalVisible(true)}>
+            <Text style={styles.filterText}>Filter {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}</Text>
             <Ionicons name="options-outline" size={16} color={UP_MAROON} style={{ marginLeft: 4 }} />
           </TouchableOpacity>
         </View>
@@ -208,6 +248,96 @@ export default function HomeScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Filter & Sort Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Filter & Sort Restaurants</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Filter Section: Student-Owned */}
+            <Text style={styles.modalSectionLabel}>Filter By</Text>
+            <TouchableOpacity
+              style={styles.filterCheckboxRow}
+              onPress={() => setStudentOwnedOnly(!studentOwnedOnly)}
+            >
+              <Ionicons
+                name={studentOwnedOnly ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={UP_MAROON}
+              />
+              <Text style={styles.filterCheckboxLabel}>UP Student-Owned Stalls Only</Text>
+            </TouchableOpacity>
+
+            {/* Sort Section */}
+            <Text style={[styles.modalSectionLabel, { marginTop: 20 }]}>Sort By</Text>
+            <TouchableOpacity
+              style={styles.sortOptionRow}
+              onPress={() => setSortBy('default')}
+            >
+              <Ionicons
+                name={sortBy === 'default' ? 'radio-button-on' : 'radio-button-off'}
+                size={20}
+                color={sortBy === 'default' ? UP_MAROON : '#888'}
+              />
+              <Text style={styles.sortOptionText}>Recommended (Default)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sortOptionRow}
+              onPress={() => setSortBy('rating')}
+            >
+              <Ionicons
+                name={sortBy === 'rating' ? 'radio-button-on' : 'radio-button-off'}
+                size={20}
+                color={sortBy === 'rating' ? UP_MAROON : '#888'}
+              />
+              <Text style={styles.sortOptionText}>Highest Rating ⭐</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sortOptionRow}
+              onPress={() => setSortBy('time')}
+            >
+              <Ionicons
+                name={sortBy === 'time' ? 'radio-button-on' : 'radio-button-off'}
+                size={20}
+                color={sortBy === 'time' ? UP_MAROON : '#888'}
+              />
+              <Text style={styles.sortOptionText}>Fastest Delivery 🛵</Text>
+            </TouchableOpacity>
+
+            {/* Modal Actions */}
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={styles.resetFilterBtn}
+                onPress={() => {
+                  setStudentOwnedOnly(false);
+                  setSortBy('default');
+                }}
+              >
+                <Text style={styles.resetFilterText}>Reset All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.applyFilterBtn}
+                onPress={() => setModalVisible(false)}
+              >
+                <Text style={styles.applyFilterText}>Apply Filters</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -222,8 +352,34 @@ const styles = StyleSheet.create({
   deliverTo: { fontSize: 12, color: '#888' },
   locationText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
   headerIcons: { flexDirection: 'row', alignItems: 'center' },
-  iconButton: { marginLeft: 12, position: 'relative' },
-  notificationDot: { position: 'absolute', top: 2, right: 2, width: 8, height: 8, backgroundColor: 'red', borderRadius: 4 },
+  userPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FDF0ED',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  userEmailText: { fontSize: 12, color: UP_MAROON, fontWeight: '600', marginLeft: 4 },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 10,
+    backgroundColor: '#EEE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  logoutText: { fontSize: 12, fontWeight: 'bold', color: UP_MAROON, marginLeft: 4 },
+  signInButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: UP_MAROON,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  signInText: { fontSize: 12, fontWeight: 'bold', color: '#FFF', marginLeft: 5 },
   greetingContainer: { marginTop: 20, marginBottom: 15 },
   greetingTitle: { fontSize: 28, fontWeight: '900', color: UP_MAROON, lineHeight: 34 },
   greetingSubtitle: { fontSize: 14, color: '#666', marginTop: 5 },
@@ -243,8 +399,8 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   seeAllText: { fontSize: 14, color: UP_MAROON, fontWeight: '600' },
-  filterBtn: { flexDirection: 'row', alignItems: 'center' },
-  filterText: { fontSize: 14, color: UP_MAROON, fontWeight: '600' },
+  filterBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FDF0ED', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  filterText: { fontSize: 13, color: UP_MAROON, fontWeight: 'bold' },
   horizontalList: { marginBottom: 25 },
   foodCard: { width: 160, marginRight: 15 },
   cardImage: { width: '100%', height: 120, borderRadius: 12, marginBottom: 8 },
@@ -259,5 +415,19 @@ const styles = StyleSheet.create({
   listInfo: { flex: 1 },
   badge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#D8F3DC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start', marginTop: 5 },
   badgeText: { fontSize: 10, color: '#2D6A4F', fontWeight: 'bold', marginLeft: 4 },
-  listHeart: { marginLeft: 10 }
+  listHeart: { marginLeft: 10 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#222' },
+  modalSectionLabel: { fontSize: 13, fontWeight: 'bold', color: '#666', marginBottom: 10 },
+  filterCheckboxRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  filterCheckboxLabel: { fontSize: 15, color: '#333', marginLeft: 10, fontWeight: '600' },
+  sortOptionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  sortOptionText: { fontSize: 15, color: '#333', marginLeft: 10, fontWeight: '600' },
+  modalActionRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24, gap: 12 },
+  resetFilterBtn: { flex: 1, backgroundColor: '#F0F0F0', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  resetFilterText: { color: '#555', fontWeight: 'bold', fontSize: 14 },
+  applyFilterBtn: { flex: 2, backgroundColor: UP_MAROON, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  applyFilterText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
 });
