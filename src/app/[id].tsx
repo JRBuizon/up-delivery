@@ -1,9 +1,10 @@
 // src/app/[id].tsx
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, SafeAreaView } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { RESTAURANTS, MenuItem } from '../constants/restaurants';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MenuItem, RESTAURANTS } from '../constants/restaurants';
 import { useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
@@ -16,6 +17,7 @@ const CAMPUS_LOCATIONS = [
 ];
 
 export default function RestaurantScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, placeOrder, selectedVoucher } = useApp();
@@ -83,20 +85,22 @@ export default function RestaurantScreen() {
         quantity: cart[item.id],
       }));
 
-    placeOrder({
-      restaurantId: restaurant.id,
-      restaurantName: restaurant.name,
-      restaurantImage: restaurant.image,
-      items: orderItems,
-      subtotal,
-      deliveryFee,
-      discount,
-      totalPrice,
-      dropoffLocation: dropoff,
-    });
 
     setCart({});
-    router.push('/orders' as any);
+    router.push({
+      pathname: '/checkout',
+      params: {
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+        restaurantImage: restaurant.image,
+        subtotal: subtotal.toString(),
+        deliveryFee: deliveryFee.toString(),
+        discount: discount.toString(),
+        totalPrice: totalPrice.toString(),
+        items: JSON.stringify(orderItems),
+        initialDropoff: dropoff,
+      },
+    });
   };
 
   return (
@@ -213,7 +217,7 @@ export default function RestaurantScreen() {
       </ScrollView>
 
       {totalItems > 0 && (
-        <View style={styles.cartBarContainer}>
+        <View style={[styles.cartBarContainer, {paddingBottom: insets.bottom}]}>
           {activeVoucher && (
             <View style={styles.voucherBanner}>
               <Ionicons name="pricetag" size={14} color="#2D6A4F" />

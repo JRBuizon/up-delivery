@@ -1,8 +1,9 @@
 // src/app/_layout.tsx
-import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { Stack, usePathname, useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Stack, usePathname, useRouter } from 'expo-router';
+import { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppProvider, useApp } from '../context/AppContext';
 
 const UP_MAROON = '#7B1113';
@@ -10,6 +11,7 @@ const INACTIVE_COLOR = '#8E8E93';
 const PROTECTED_ROUTES = ['/orders', '/rider', '/rewards'];
 
 function NavigationShell() {
+  const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const router = useRouter();
   const { isHydrated, user, orders } = useApp();
@@ -51,13 +53,13 @@ function NavigationShell() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaProvider style={styles.container}>
       <View style={styles.content}>
         <Stack screenOptions={{ headerShown: false }} />
       </View>
 
       {showTabBar && (
-        <View style={styles.tabBar}>
+        <View style={[styles.tabBar, { paddingBottom: insets.bottom }]}>
           <TouchableOpacity
             style={styles.tabItem}
             onPress={() => router.replace('/')}
@@ -142,7 +144,7 @@ function NavigationShell() {
           </TouchableOpacity>
         </View>
       )}
-    </View>
+    </SafeAreaProvider>
   );
 }
 
@@ -158,14 +160,20 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
   content: { flex: 1 },
   tabBar: {
+    position: 'absolute',
+    display: 'flex',
     flexDirection: 'row',
-    height: 60,
-    paddingBottom: 5,
-    backgroundColor: '#FFFFFF',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFF',
+    padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-    justifyContent: 'space-around',
-    alignItems: 'center',
+    borderTopColor: '#EEE',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 5
   },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   tabLabel: { fontSize: 12, fontWeight: 'bold', marginTop: 2 },
