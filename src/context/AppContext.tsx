@@ -277,7 +277,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const placeOrder: AppContextType['placeOrder'] = async (orderData) => {
     const newOrderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
     const customerLabel = user ? `${user.name} (${user.email})` : 'Fellow Iskolar';
-    const createdAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const createdAt = new Date().toISOString();
 
     const newOrderPayload = {
       id: newOrderId,
@@ -299,6 +299,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       rider_name: 'Waiting for a fellow Isko Rider...',
     };
 
+    // 2. Insert Order First
+    const { error: orderError } = await supabase.from('orders').insert([newOrderPayload]);
+    if (orderError) {
+      console.error('❌ Failed to create order in Supabase:', orderError.message);
+      return;
+    }
+
+    // 3. Prepare Gig Payload (Linked to order ID)
     const newGigPayload = {
       id: `GIG-${Math.floor(400 + Math.random() * 500)}`,
       pickup: orderData.restaurantName,
@@ -313,11 +321,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       linked_order_id: newOrderId,
     };
 
-    await Promise.all([
-      supabase.from('orders').insert([newOrderPayload]),
-      supabase.from('gigs').insert([newGigPayload]),
-    ]);
+    // 4. Insert Gig
+    const { error: gigError } = await supabase.from('gigs').insert([newGigPayload]);
+    if (gigError) {
+      console.error('❌ Failed to create rider gig in Supabase:', gigError.message, gigError.details);
+    } else {
+      console.log('✅ Order & Rider Gig successfully created!');
+    }
 
+    // 5. Update local points/vouchers
     const earnedPoints = Math.max(5, Math.floor(orderData.totalPrice / 10));
     setPoints((prev) => prev + earnedPoints);
 
