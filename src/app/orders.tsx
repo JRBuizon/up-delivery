@@ -32,22 +32,24 @@ export default function OrdersScreen() {
   const pastOrders = myOrders.filter((o) => o.status === 'Delivered');
   const displayedOrders = tab === 'active' ? activeOrders : pastOrders;
 
-  const [previousRatings, setPreviousRatings] = useState<any[]>([])
+  const [previousRatings, setPreviousRatings] = useState<any[]>([]);
+
+  // Fetch all reviews made by this user to check which orders/targets are already rated
+  const fetchUserRatings = async () => {
+    const reviewerEmail = user?.email || 'Juan';
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('reviewer_name', reviewerEmail);
+
+    if (!error && data) {
+      setPreviousRatings(data);
+    }
+  };
 
   useEffect(() => {
-      const fetchRiderRating = async () => {
-        const { data, error } = await supabase
-          .from('reviews')
-          .select('*')
-          .eq('target_type', 'rider')
-          .eq('reviewer_name', user?.email || "Juan");
-        if (!error && data && data.length > 0) {
-          setPreviousRatings(data)
-        }
-      };
-  
-      fetchRiderRating();
-    }, [user]);
+    fetchUserRatings();
+  }, [user]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -95,6 +97,14 @@ export default function OrdersScreen() {
             const stepIndex = STATUS_STEPS.indexOf(order.status);
             const timeSinceOrdered = Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000);
             const isDelivered = order.status === 'Delivered';
+
+            // Check if rider and restaurant were already rated for this specific order ID
+            const hasRatedRider = previousRatings.some(
+              (r) => r.order_id === order.id && r.target_type === 'rider'
+            );
+            const hasRatedRestaurant = previousRatings.some(
+              (r) => r.order_id === order.id && r.target_type === 'restaurant'
+            );
 
             return (
               <View key={order.id} style={styles.orderCard}>
@@ -174,7 +184,7 @@ export default function OrdersScreen() {
                 {/* Totals & Action */}
                 <View style={styles.itemsDivider} />
                 <View style={styles.footerRow}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.totalLabel}>
                       Total Paid (incl. ₱{order.deliveryFee} delivery
                       {order.discount > 0 ? ` - ₱${order.discount} voucher` : ''})
@@ -182,9 +192,28 @@ export default function OrdersScreen() {
                     <Text style={styles.totalAmount}>₱{order.totalPrice}</Text>
                   </View>
 
-                  <View style={styles.actionButtonsRow}>
-                    {/* Rate Rider Button for Past Orders */}
-                    {isDelivered  &&!previousRatings.map(r=>r.order_id).includes(order.id) && (
+                  {/* Stacked Action Buttons */}
+                  <View style={styles.actionButtonsColumn}>
+                    {/* Rate Restaurant Button */}
+                    {isDelivered && !hasRatedRestaurant && (
+                      <TouchableOpacity
+                        style={styles.rateRestaurantBtn}
+                        onPress={() =>
+                          setRatingTarget({
+                            orderId: order.id,
+                            targetId: order.restaurantId,
+                            targetName: order.restaurantName,
+                            targetType: 'restaurant',
+                          })
+                        }
+                      >
+                        <Ionicons name="restaurant" size={13} color="#92400E" />
+                        <Text style={styles.rateButtonText}>Rate Food</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Rate Rider Button */}
+                    {isDelivered && !hasRatedRider && (
                       <TouchableOpacity
                         style={styles.rateRiderBtn}
                         onPress={() =>
@@ -196,22 +225,10 @@ export default function OrdersScreen() {
                           })
                         }
                       >
-                        <Ionicons name="star" size={14} color="#D97706" />
-                        <Text style={styles.rateRiderBtnText}>Rate Rider</Text>
+                        <Ionicons name="star" size={13} color="#D97706" />
+                        <Text style={styles.rateButtonText}>Rate Rider</Text>
                       </TouchableOpacity>
                     )}
-
-                    {/* <TouchableOpacity
-                      style={styles.reorderBtn}
-                      onPress={() =>
-                        router.push({ pathname: '/[id]', params: { id: order.restaurantId } })
-                      }
-                    >
-                      <Ionicons name="refresh" size={16} color="#FFF" />
-                      <Text style={styles.reorderBtnText}>
-                        {isDelivered ? 'Reorder' : 'View Store'}
-                      </Text>
-                    </TouchableOpacity> */}
                   </View>
                 </View>
               </View>
@@ -224,14 +241,17 @@ export default function OrdersScreen() {
       {/* Manual Rating Modal Triggered from Past Orders */}
       {ratingTarget && (
         <RatingModal
-          reviewerName={user?.email || "juan"}
+          reviewerName={user?.email || 'Juan'}
           visible={true}
           orderId={ratingTarget.orderId}
           targetId={ratingTarget.targetId}
           targetName={ratingTarget.targetName}
           targetType={ratingTarget.targetType}
           onClose={() => setRatingTarget(null)}
-          onSubmitted={() => setRatingTarget(null)}
+          onSubmitted={() => {
+            setRatingTarget(null);
+            fetchUserRatings(); // Refresh local ratings list so buttons update instantly
+          }}
         />
       )}
     </SafeAreaView>
@@ -320,28 +340,45 @@ const styles = StyleSheet.create({
   itemQty: { fontSize: 13, fontWeight: 'bold', color: UP_MAROON, width: 26 },
   itemName: { fontSize: 13, color: '#444', flex: 1 },
   itemPrice: { fontSize: 13, fontWeight: '600', color: '#333' },
-  footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  footerColumn: { display:'flex', flexDirection: 'column', alignItems: 'center'},
   totalLabel: { fontSize: 11, color: '#888' },
   totalAmount: { fontSize: 17, fontWeight: 'bold', color: '#222', marginTop: 2 },
-  actionButtonsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  actionButtonsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+
+  footerRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'flex-start' // Align items to the top so stacked buttons line up nicely with the total text
+  },
+  actionButtonsColumn: { 
+    flexDirection: 'column', 
+    alignItems: 'flex-end', 
+    gap: 6,
+    marginLeft: 10
+  },
   rateRiderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF3C7',
-    paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#F59E0B',
+    minWidth: 115,
+    justifyContent: 'center',
   },
-  rateRiderBtnText: { color: '#92400E', fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
-  reorderBtn: {
+  rateRestaurantBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: UP_MAROON,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    backgroundColor: '#FFEDD5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F97316',
+    minWidth: 115,
+    justifyContent: 'center',
   },
-  reorderBtnText: { color: '#FFF', fontSize: 13, fontWeight: 'bold', marginLeft: 5 },
+  rateButtonText: { color: '#92400E', fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
 });

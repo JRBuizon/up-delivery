@@ -1,8 +1,8 @@
 // src/app/_layout.tsx
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Stack, usePathname, useRouter } from 'expo-router';
-import { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import RatingModal from '../components/RatingModal';
 import { AppProvider, useApp } from '../context/AppContext';
@@ -11,16 +11,8 @@ const UP_MAROON = '#7B1113';
 const INACTIVE_COLOR = '#8E8E93';
 const PROTECTED_ROUTES = ['/orders', '/rider', '/rewards'];
 
-
-function NavigationShell() {
-  const insets = useSafeAreaInsets();
-  const pathname = usePathname();
-  const router = useRouter();
-  const { isHydrated, user, orders } = useApp();
-
-
 function GlobalRatingOverlay() {
-  const { pendingRating, clearPendingRating } = useApp();
+  const { pendingRating, clearPendingRating, user } = useApp();
 
   if (!pendingRating) return null;
 
@@ -39,6 +31,14 @@ function GlobalRatingOverlay() {
     />
   );
 }
+
+function NavigationShell() {
+  const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  const router = useRouter();
+  const { isHydrated, user, orders } = useApp();
+
+  const [showRiderAlert, setShowRiderAlert] = useState(false);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -69,9 +69,16 @@ function GlobalRatingOverlay() {
   const handleProtectedTabPress = (targetPath: string) => {
     if (!user) {
       router.push('/login' as any);
-    } else {
-      router.replace(targetPath as any);
+      return;
     }
+
+    // Intercept navigation to Rider Hub if user has active orders
+    if (targetPath === '/rider' && activeOrderCount > 0) {
+      setShowRiderAlert(true);
+      return;
+    }
+
+    router.replace(targetPath as any);
   };
 
   return (
@@ -82,6 +89,38 @@ function GlobalRatingOverlay() {
 
       {/* Global Rating Modal Popup Overlay */}
       <GlobalRatingOverlay />
+
+      {/* Active Order Restriction Alert for Rider Tab */}
+      <Modal visible={showRiderAlert} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.iconCircle}>
+              <MaterialCommunityIcons name="moped" size={32} color={UP_MAROON} />
+            </View>
+            <Text style={styles.modalTitle}>Rider Mode Unavailable</Text>
+            <Text style={styles.modalBody}>
+              You currently have <Text style={{ fontWeight: 'bold' }}>{activeOrderCount} active order{activeOrderCount > 1 ? 's' : ''}</Text> in progress. You cannot accept rider gigs while waiting for your food delivery.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.modalPrimaryBtn}
+              onPress={() => {
+                setShowRiderAlert(false);
+                router.replace('/orders' as any);
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>View My Orders</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setShowRiderAlert(false)}
+            >
+              <Text style={styles.modalCloseBtnText}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {showTabBar && (
         <View style={[styles.tabBar, { paddingBottom: insets.bottom }]}>
@@ -198,7 +237,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 5,
-    elevation: 5
+    elevation: 5,
   },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   tabLabel: { fontSize: 12, fontWeight: 'bold', marginTop: 2 },
@@ -215,4 +254,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
   },
   tabBadgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 340,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  iconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FDF0ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#222', marginBottom: 8 },
+  modalBody: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  modalPrimaryBtn: {
+    backgroundColor: UP_MAROON,
+    width: '100%',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalPrimaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  modalCloseBtn: { paddingVertical: 6 },
+  modalCloseBtnText: { color: '#888', fontWeight: '600', fontSize: 13 },
 });

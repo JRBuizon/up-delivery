@@ -183,10 +183,10 @@ export default function RestaurantScreen() {
           </View>
 
           {/* Rate Button */}
-          <TouchableOpacity style={styles.rateRestaurantBtn} onPress={() => setModalVisible(true)}>
+          {/* <TouchableOpacity style={styles.rateRestaurantBtn} onPress={() => setModalVisible(true)}>
             <Ionicons name="star-outline" size={16} color={UP_MAROON} style={{ marginRight: 6 }} />
             <Text style={styles.rateRestaurantBtnText}>Rate this Restaurant</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
 
         {/* Campus Drop-off Selector */}
