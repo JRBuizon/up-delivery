@@ -1,6 +1,7 @@
 // src/context/AppContext.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Restaurant, RESTAURANTS } from '../constants/restaurants';
 import { supabase } from '../utils/supabase';
 
 const SESSION_KEY = '@up_delivery_session_v1';
@@ -65,17 +66,10 @@ export interface RiderGig {
   acceptedByEmail?: string;
 }
 
-export interface PendingRating {
-  orderId: string;
-  targetId: string;
-  targetName: string;
-  targetType: 'rider' | 'buyer' | 'restaurant';
-  reviewerName: string; // Added reviewer email/name field
-}
-
 interface AppContextType {
   isHydrated: boolean;
   user: User | null;
+  restaurants: Restaurant[]; // Live restaurants + menus from Supabase
   orders: Order[];
   points: number;
   claimedVouchers: Voucher[];
@@ -84,8 +78,6 @@ interface AppContextType {
   riderEarnings: number;
   completedDeliveries: number;
   gigs: RiderGig[];
-  pendingRating: PendingRating | null;
-  clearPendingRating: () => void;
   login: (email: string, password: string, customName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   placeOrder: (orderData: Omit<Order, 'id' | 'status' | 'createdAt' | 'riderName'>) => Promise<void>;
@@ -115,6 +107,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
 
+  // Starts with static RESTAURANTS fallback, then updates from Supabase
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(RESTAURANTS);
   const [orders, setOrders] = useState<Order[]>([]);
   const [gigs, setGigs] = useState<RiderGig[]>([]);
 
@@ -124,9 +118,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [riderOnline, setRiderOnline] = useState<boolean>(true);
   const [riderEarnings, setRiderEarnings] = useState<number>(185);
   const [completedDeliveries, setCompletedDeliveries] = useState<number>(7);
-  
-  // Rating Modal state
-  const [pendingRating, setPendingRating] = useState<PendingRating | null>(null);
 
   const loadUserProfile = async (email: string) => {
     try {
@@ -155,9 +146,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const fetchSupabaseData = async () => {
       try {
-        const [{ data: ordersData }, { data: gigsData }] = await Promise.all([
+        const [
+          { data: ordersData },
+          { data: gigsData },
+          { data: restaurantsData },
+          { data: menuItemsData },
+        ] = await Promise.all([
           supabase.from('orders').select('*').order('inserted_at', { ascending: false }),
           supabase.from('gigs').select('*').order('inserted_at', { ascending: false }),
+          supabase.from('restaurants').select('*'),
+          supabase.from('menu_items').select('*').order('created_at', { ascending: true }),
         ]);
 
         if (ordersData) {
@@ -202,6 +200,60 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             }))
           );
         }
+
+        // Map Supabase restaurants + menu_items into the app's Restaurant[] shape
+        if (restaurantsData && restaurantsData.length > 0) {
+          const allMenuItems = menuItemsData || [];
+          const mappedRestaurants: Restaurant[] = restaurantsData.map((r: any) => {
+            const fallbackResto = RESTAURANTS.find((local) => local.id === r.id);
+            const restoMenu = allMenuItems
+              .filter((m: any) => m.restaurant_id === r.id)
+              .map((m: any) => ({
+                id: m.id,
+                name: m.name,
+                description: m.description || '',
+                price: Number(m.price),
+                image: m.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80',
+                isAvailable: m.is_available ?? true,
+              }));
+
+            return {
+              id: r.id,
+              name: r.name,
+              category: r.category,
+              priceRange: r.price_range,
+              rating: Number(r.rating ?? 5.0),
+              deliveryTime: r.delivery_time,
+              image: r.image || fallbackResto?.image || '',
+              isPopular: Boolean(r.is_popular),
+              isStudentOwned: Boolean(r.is_student_owned),
+              latitude: r.latitude ? Number(r.latitude) : (fallbackResto?.latitude ?? 14.6538),
+              longitude: r.longitude ? Number(r.longitude) : (fallbackResto?.longitude ?? 121.0698),
+              menu: restoMenu.length > 0 ? restoMenu : (fallbackResto?.menu || []),
+            };
+          });
+          setRestaurants(mappedRestaurants);
+        } else if (menuItemsData && menuItemsData.length > 0) {
+          // Fallback if only menu_items were returned
+          setRestaurants(
+            RESTAURANTS.map((r) => {
+              const restoMenu = menuItemsData
+                .filter((m: any) => m.restaurant_id === r.id)
+                .map((m: any) => ({
+                  id: m.id,
+                  name: m.name,
+                  description: m.description || '',
+                  price: Number(m.price),
+                  image: m.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80',
+                  isAvailable: m.is_available ?? true,
+                }));
+              return {
+                ...r,
+                menu: restoMenu.length > 0 ? restoMenu : r.menu,
+              };
+            })
+          );
+        }
       } catch (err) {
         console.warn('Error fetching Supabase data:', err);
       }
@@ -231,6 +283,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         fetchSupabaseData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gigs' }, () => {
+        fetchSupabaseData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
+        fetchSupabaseData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurants' }, () => {
         fetchSupabaseData();
       })
       .subscribe();
@@ -290,7 +348,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const placeOrder: AppContextType['placeOrder'] = async (orderData) => {
     const newOrderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
-    const customerLabel = user ? user.email : 'Fellow Iskolar';
+    const customerLabel = user ? `${user.name} (${user.email})` : 'Fellow Iskolar';
     const createdAt = new Date().toISOString();
 
     const newOrderPayload = {
@@ -353,21 +411,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const flow: OrderStatus[] = ['Confirmed', 'Preparing', 'On the Way', 'Delivered'];
     const currentIndex = flow.indexOf(targetOrder.status);
-    const nextIndex = Math.min(currentIndex + 1, flow.length - 1);
-    const nextStatus = flow[nextIndex];
+    const nextStatus = flow[Math.min(currentIndex + 1, flow.length - 1)];
+    const newRiderName = nextStatus === 'Confirmed' ? 'Waiting for a fellow Isko Rider...' : `${user?.name || 'Isko'} (Student Rider)`;
 
-    await supabase.from('orders').update({ status: nextStatus }).eq('id', orderId);
-
-    // If buyer advances order to Delivered, trigger rating modal for the Rider with reviewerName = user?.email
-    if (nextStatus === 'Delivered' && targetOrder.status !== 'Delivered') {
-      setPendingRating({
-        orderId: targetOrder.id,
-        targetId: targetOrder.riderName || 'assigned_rider',
-        targetName: targetOrder.riderName || 'UP Delivery Rider',
-        targetType: 'rider',
-        reviewerName: user?.email || 'Anonymous Isko',
-      });
-    }
+    await supabase.from('orders').update({ status: nextStatus, rider_name: newRiderName }).eq('id', orderId);
   };
 
   const redeemVoucher = (voucher: Voucher): boolean => {
@@ -383,7 +430,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const acceptGig = async (gigId: string) => {
-    const riderLabel = user ? user.email : 'Fellow Isko Rider';
+    const riderLabel = user ? `${user.name} (${user.email})` : 'Fellow Isko Rider';
     const targetGig = gigs.find((g) => g.id === gigId);
     if (!targetGig) return;
 
@@ -412,20 +459,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setRiderEarnings((prev) => prev + targetGig.fee);
       setCompletedDeliveries((prev) => prev + 1);
       setPoints((prev) => prev + 10);
-
-      // If rider completes the delivery gig, trigger rating modal for the Buyer with reviewerName = user?.email
-      setPendingRating({
-        orderId: targetGig.linkedOrderId || targetGig.id,
-        targetId: targetGig.customerName || 'buyer_user',
-        targetName: targetGig.customerName || 'Isko Buyer',
-        targetType: 'buyer',
-        reviewerName: user?.email || 'Anonymous Rider',
-      });
     }
-  };
-
-  const clearPendingRating = () => {
-    setPendingRating(null);
   };
 
   const resetDemoData = async () => {
@@ -443,7 +477,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setRiderOnline(true);
       setRiderEarnings(185);
       setCompletedDeliveries(7);
-      setPendingRating(null);
     } catch (error) {
       console.warn('Failed to reset demo data:', error);
     }
@@ -454,6 +487,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         isHydrated,
         user,
+        restaurants,
         orders,
         points,
         claimedVouchers,
@@ -462,8 +496,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         riderEarnings,
         completedDeliveries,
         gigs,
-        pendingRating,
-        clearPendingRating,
         login,
         logout,
         placeOrder,

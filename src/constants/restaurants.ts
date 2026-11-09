@@ -6,6 +6,7 @@ export interface MenuItem {
   description: string;
   price: number;
   image: string;
+  isAvailable?: boolean;
 }
 
 export interface Restaurant {

@@ -11,7 +11,7 @@ const UP_MAROON = '#7B1113';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user, logout } = useApp();
+  const { user, logout, restaurants } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
@@ -21,10 +21,9 @@ export default function HomeScreen() {
   const [studentOwnedOnly, setStudentOwnedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'default' | 'rating' | 'time'>('default');
 
-  const popularRestaurants = RESTAURANTS.filter((r) => r.isPopular);
-
+  const popularRestaurants = restaurants.filter((r) => r.isPopular);  
   // Filter and Sort Restaurants for "All Restaurants"
-  const filteredRestaurants = RESTAURANTS.filter((restaurant) => {
+  const filteredRestaurants = restaurants.filter((restaurant) => {
     const matchesCategory =
       selectedCategory === 'All' ||
       restaurant.category.toLowerCase() === selectedCategory.toLowerCase();

@@ -1,15 +1,13 @@
 // src/app/[id].tsx
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import RatingModal from '../components/RatingModal';
 import { CAMPUS_LOCATIONS, CampusLocation } from '../constants/locations';
-import { MenuItem, RESTAURANTS } from '../constants/restaurants';
+import { MenuItem } from '../constants/restaurants';
 import { useApp } from '../context/AppContext';
 import { calculateDeliveryFee, calculateDistanceKm } from '../utils/distance';
-import { supabase } from '../utils/supabase';
 
 const UP_MAROON = '#7B1113';
 
@@ -17,47 +15,12 @@ export default function RestaurantScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user, selectedVoucher } = useApp();
+  const { user, selectedVoucher, restaurants } = useApp();
 
-  const restaurant = RESTAURANTS.find((r) => r.id === id);
+  // Find restaurant from live context state
+  const restaurant = restaurants.find((r) => r.id === id);
   const [cart, setCart] = useState<{ [key: string]: number }>({});
-  
-  // State holds the entire CampusLocation object
   const [dropoff, setDropoff] = useState<CampusLocation>(CAMPUS_LOCATIONS[0]);
-
-  // Rating & Review State
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [averageRating, setAverageRating] = useState<string>('0.0');
-  const [loadingReviews, setLoadingReviews] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-
-  // Fetch reviews from Supabase
-  const fetchReviews = async () => {
-    if (!id) return;
-    setLoadingReviews(true);
-
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('target_id', id)
-      .eq('target_type', 'restaurant')
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      setReviews(data);
-      if (data.length > 0) {
-        const total = data.reduce((sum, r) => sum + r.rating, 0);
-        setAverageRating((total / data.length).toFixed(1));
-      } else if (restaurant?.rating) {
-        setAverageRating(restaurant.rating.toString());
-      }
-    }
-    setLoadingReviews(false);
-  };
-
-  useEffect(() => {
-    fetchReviews();
-  }, [id]);
 
   if (!restaurant) {
     return (
@@ -71,6 +34,7 @@ export default function RestaurantScreen() {
   }
 
   const addToCart = (item: MenuItem) => {
+    if (item.isAvailable === false) return;
     setCart((prev) => ({
       ...prev,
       [item.id]: (prev[item.id] || 0) + 1,
@@ -99,19 +63,17 @@ export default function RestaurantScreen() {
     0
   );
 
-  // 1. Calculate dynamic distance
-  const distanceKm = restaurant?.latitude && restaurant?.longitude
-    ? calculateDistanceKm(
-        restaurant.latitude,
-        restaurant.longitude,
-        dropoff.latitude,
-        dropoff.longitude
-      )
-    : 1.0;
+  const distanceKm =
+    restaurant?.latitude && restaurant?.longitude
+      ? calculateDistanceKm(
+          restaurant.latitude,
+          restaurant.longitude,
+          dropoff.latitude,
+          dropoff.longitude
+        )
+      : 1.0;
 
-  // 2. Calculate dynamic fee based on distance
   const deliveryFee = totalItems > 0 ? calculateDeliveryFee(distanceKm) : 0;
-  
   const discount = activeVoucher ? Math.min(activeVoucher.discountAmount, subtotal + deliveryFee) : 0;
   const totalPrice = Math.max(0, subtotal + deliveryFee - discount);
 
@@ -173,20 +135,10 @@ export default function RestaurantScreen() {
           <Text style={styles.categoryText}>
             {restaurant.category} • {restaurant.priceRange}
           </Text>
-          
           <View style={styles.statsRow}>
-            <View style={styles.ratingBadgeContainer}>
-              <Ionicons name="star" size={15} color="#E9C46A" />
-              <Text style={styles.ratingText}>{averageRating} ({reviews.length} reviews)</Text>
-            </View>
-            <Text style={styles.timeText}>🛵 Starts at ₱15</Text>
+            <Text style={styles.ratingText}>⭐ {restaurant.rating}</Text>
+            <Text style={styles.timeText}>🛵 {restaurant.deliveryTime} • Starts at ₱15</Text>
           </View>
-
-          {/* Rate Button */}
-          <TouchableOpacity style={styles.rateRestaurantBtn} onPress={() => setModalVisible(true)}>
-            <Ionicons name="star-outline" size={16} color={UP_MAROON} style={{ marginRight: 6 }} />
-            <Text style={styles.rateRestaurantBtnText}>Rate this Restaurant</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Campus Drop-off Selector */}
@@ -212,58 +164,68 @@ export default function RestaurantScreen() {
 
         <View style={styles.divider} />
 
-        {/* Menu Section */}
         <View style={styles.menuSection}>
           <Text style={styles.menuHeading}>Menu</Text>
           {restaurant.menu.map((item) => {
             const quantity = cart[item.id] || 0;
+            const isSoldOut = item.isAvailable === false;
+
             return (
               <TouchableOpacity
                 key={item.id}
-                style={styles.menuCard}
-                activeOpacity={0.8}
-                onPress={() => addToCart(item)}
+                style={[styles.menuCard, isSoldOut && { opacity: 0.55 }]}
+                activeOpacity={isSoldOut ? 1 : 0.8}
+                onPress={() => !isSoldOut && addToCart(item)}
               >
                 <View style={styles.menuInfo}>
-                  <Text style={styles.menuItemName}>{item.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Text style={styles.menuItemName}>{item.name}</Text>
+                    {isSoldOut && (
+                      <View style={styles.soldOutBadge}>
+                        <Text style={styles.soldOutText}>Sold Out</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.menuItemDesc}>{item.description}</Text>
                   <Text style={styles.menuItemPrice}>₱{item.price}</Text>
                 </View>
 
                 <View style={styles.menuImageWrapper}>
                   <Image source={{ uri: item.image }} style={styles.menuItemImage} />
-                  {quantity === 0 ? (
-                    <TouchableOpacity
-                      style={styles.addButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        addToCart(item);
-                      }}
-                    >
-                      <Ionicons name="add" size={20} color="#FFF" />
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.qtyContainer}>
+                  {!isSoldOut && (
+                    quantity === 0 ? (
                       <TouchableOpacity
-                        style={styles.qtyBtn}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          removeFromCart(item);
-                        }}
-                      >
-                        <Ionicons name="remove" size={16} color="#FFF" />
-                      </TouchableOpacity>
-                      <Text style={styles.qtyText}>{quantity}</Text>
-                      <TouchableOpacity
-                        style={styles.qtyBtn}
+                        style={styles.addButton}
                         onPress={(e) => {
                           e.stopPropagation();
                           addToCart(item);
                         }}
                       >
-                        <Ionicons name="add" size={16} color="#FFF" />
+                        <Ionicons name="add" size={20} color="#FFF" />
                       </TouchableOpacity>
-                    </View>
+                    ) : (
+                      <View style={styles.qtyContainer}>
+                        <TouchableOpacity
+                          style={styles.qtyBtn}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            removeFromCart(item);
+                          }}
+                        >
+                          <Ionicons name="remove" size={16} color="#FFF" />
+                        </TouchableOpacity>
+                        <Text style={styles.qtyText}>{quantity}</Text>
+                        <TouchableOpacity
+                          style={styles.qtyBtn}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            addToCart(item);
+                          }}
+                        >
+                          <Ionicons name="add" size={16} color="#FFF" />
+                        </TouchableOpacity>
+                      </View>
+                    )
                   )}
                 </View>
               </TouchableOpacity>
@@ -271,55 +233,11 @@ export default function RestaurantScreen() {
           })}
         </View>
 
-        <View style={styles.divider} />
-
-        {/* Reviews Section */}
-        <View style={styles.reviewsSection}>
-          <Text style={styles.menuHeading}>Customer Feedback</Text>
-          {loadingReviews ? (
-            <ActivityIndicator color={UP_MAROON} style={{ marginVertical: 20 }} />
-          ) : reviews.length === 0 ? (
-            <Text style={styles.noReviewsText}>No reviews yet. Be the first Isko to share your feedback!</Text>
-          ) : (
-            reviews.map((rev) => (
-              <View key={rev.id} style={styles.reviewCard}>
-                <View style={styles.reviewCardHeader}>
-                  <Text style={styles.reviewerName}>{rev.reviewer_name || 'Anonymous Isko'}</Text>
-                  <View style={{ flexDirection: 'row' }}>
-                    {[...Array(5)].map((_, i) => (
-                      <Ionicons
-                        key={i}
-                        name={i < rev.rating ? 'star' : 'star-outline'}
-                        size={12}
-                        color="#FFC107"
-                      />
-                    ))}
-                  </View>
-                </View>
-                {rev.comment ? <Text style={styles.reviewComment}>{rev.comment}</Text> : null}
-                <Text style={styles.reviewDate}>{new Date(rev.created_at).toLocaleDateString()}</Text>
-              </View>
-            ))
-          )}
-        </View>
-
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Rating Modal Component */}
-      <RatingModal
-        reviewerName={user?.name || 'Juan'}
-        visible={modalVisible}
-        orderId={`ord_rest_${Date.now()}`}
-        targetId={restaurant.id}
-        targetName={restaurant.name}
-        targetType="restaurant"
-        onClose={() => setModalVisible(false)}
-        onSubmitted={fetchReviews}
-      />
-
       {totalItems > 0 && (
-        <View style={[styles.cartBarContainer, {paddingBottom: insets.bottom}]}>
+        <View style={[styles.cartBarContainer, { paddingBottom: insets.bottom }]}>
           {activeVoucher && (
             <View style={styles.voucherBanner}>
               <Ionicons name="pricetag" size={14} color="#2D6A4F" />
@@ -365,21 +283,9 @@ const styles = StyleSheet.create({
   badge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#D8F3DC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   badgeText: { fontSize: 11, color: '#2D6A4F', fontWeight: 'bold', marginLeft: 4 },
   categoryText: { fontSize: 14, color: '#888', marginVertical: 4 },
-  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, justifyContent: 'space-between' },
-  ratingBadgeContainer: { flexDirection: 'row', alignItems: 'center' },
-  ratingText: { fontSize: 14, fontWeight: 'bold', color: '#444', marginLeft: 4 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  ratingText: { fontSize: 14, fontWeight: 'bold', color: '#E9C46A', marginRight: 12 },
   timeText: { fontSize: 14, color: '#666' },
-  rateRestaurantBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: UP_MAROON,
-    borderRadius: 10,
-    paddingVertical: 10,
-    marginTop: 14,
-  },
-  rateRestaurantBtnText: { color: UP_MAROON, fontWeight: 'bold', fontSize: 13 },
   dropoffSection: { backgroundColor: '#FFF', paddingHorizontal: 16, paddingBottom: 14 },
   dropoffLabel: { fontSize: 13, fontWeight: 'bold', color: '#444' },
   locChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, backgroundColor: '#F0F0F0', marginRight: 8 },
@@ -391,7 +297,9 @@ const styles = StyleSheet.create({
   menuHeading: { fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 16 },
   menuCard: { flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, alignItems: 'center' },
   menuInfo: { flex: 1, paddingRight: 12 },
-  menuItemName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 4 },
+  menuItemName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 4, marginRight: 6 },
+  soldOutBadge: { backgroundColor: '#FDE2E2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginBottom: 4 },
+  soldOutText: { color: '#C53030', fontSize: 10, fontWeight: 'bold' },
   menuItemDesc: { fontSize: 13, color: '#777', lineHeight: 18, marginBottom: 8 },
   menuItemPrice: { fontSize: 15, fontWeight: 'bold', color: UP_MAROON },
   menuImageWrapper: { position: 'relative', width: 90, height: 90 },
@@ -400,13 +308,6 @@ const styles = StyleSheet.create({
   qtyContainer: { position: 'absolute', bottom: -8, left: 5, right: 5, backgroundColor: UP_MAROON, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, paddingVertical: 4 },
   qtyBtn: { padding: 2 },
   qtyText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
-  reviewsSection: { padding: 16, backgroundColor: '#FFF' },
-  noReviewsText: { color: '#777', fontStyle: 'italic', fontSize: 13 },
-  reviewCard: { backgroundColor: '#F9F9F9', borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#EEE' },
-  reviewCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  reviewerName: { fontWeight: 'bold', color: '#333', fontSize: 13 },
-  reviewComment: { color: '#555', fontSize: 13, lineHeight: 18, marginBottom: 4 },
-  reviewDate: { fontSize: 10, color: '#999' },
   cartBarContainer: { position: 'absolute', bottom: 16, left: 16, right: 16 },
   voucherBanner: { backgroundColor: '#D8F3DC', paddingVertical: 6, paddingHorizontal: 12, borderTopLeftRadius: 10, borderTopRightRadius: 10, flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
   voucherBannerText: { fontSize: 12, color: '#2D6A4F', fontWeight: 'bold', marginLeft: 6 },
